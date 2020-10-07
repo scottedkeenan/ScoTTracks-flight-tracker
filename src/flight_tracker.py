@@ -10,14 +10,13 @@ from ogn.parser import parse, ParseError
 
 from flight_tracker_postgreser import add_flight, update_flight
 
-
-
-UKDRL = {'longitude': -0.854433, 'latitude': 53.248563}
-UKNHL = {'longitude': -0.854433, 'latitude': 53.248563}
+UKDRL = {'name': 'Darlton', 'longitude': -0.854433, 'latitude': 53.248563, 'elevation': 35}
+UKNHL = {'name': 'DSGC', 'longitude': -0.854433, 'latitude': 53.248563}
 PORTMOAK = {'name': 'Portmoak', 'latitude': 56.188496, 'longitude': -3.321460, 'elevation': 109.728}
 ROCKTON = {'name': 'Rockton', 'latitude': 43.322222, 'longitude': -80.176389, 'elevation': 258}
 RIDEAU = {'name': 'Rideau', 'latitude': 45.100788, 'longitude': -75.632947, 'elevation': 87}
 TRUCKEE = {'name': 'Truckee', 'latitude': 39.321262, 'longitude': -120.139830, 'elevation': 1799}
+SYERSTON = {'name': 'Syerston', 'latitude': 53.024159, 'longitude': -0.911710, 'elevation': 69}
 
 AIRCRAFT_DATA_TEMPLATE = {
         'airfield': None,
@@ -35,7 +34,7 @@ AIRCRAFT_DATA_TEMPLATE = {
 
 tracked_aircraft = {}
 
-conn = psycopg2.connect(user="postgres", password="postgres", host="172.19.0.3", dbname="flighttrackerdb")
+conn = psycopg2.connect(user="postgres", password="postgres", host="0.0.0.0", dbname="flighttrackerdb", port = "5469")
 conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
 cursor = conn.cursor()
 
@@ -102,7 +101,7 @@ def track_aircraft(beacon, airfield, distance):
         new_aircraft['altitude'] = beacon['altitude']
         new_aircraft['ground_speed'] = beacon['ground_speed']
         new_aircraft['receiver_name'] = beacon['receiver_name']
-        new_aircraft['reference_timestamp'] = beacon['reference_timestamp']
+        new_aircraft['reference_timestamp'] = beacon['reference_timestamp'].strftime("%m/%d/%Y, %H:%M:%S")
         new_aircraft['registration'] = registration
 
 
@@ -121,11 +120,11 @@ def track_aircraft(beacon, airfield, distance):
             aircraft['altitude'] = beacon['altitude']
             aircraft['ground_speed'] = beacon['ground_speed']
             aircraft['receiver_name'] = beacon['receiver_name']
-            aircraft['reference_timestamp'] = beacon['reference_timestamp']
+            aircraft['reference_timestamp'] = beacon['reference_timestamp'].strftime("%m/%d/%Y, %H:%M:%S")
 
             if aircraft['status'] == 'ground':
                 aircraft['status'] = 'air'
-                aircraft['takeoff_timestamp'] = beacon['timestamp']
+                aircraft['takeoff_timestamp'] = beacon['timestamp'].strftime("%m/%d/%Y, %H:%M:%S")
                 print("Adding aircraft {} as launched".format(registration))
                 add_flight(cursor, aircraft)
             # else:
@@ -138,15 +137,16 @@ def track_aircraft(beacon, airfield, distance):
             aircraft['altitude'] = beacon['altitude']
             aircraft['ground_speed'] = beacon['ground_speed']
             aircraft['receiver_name'] = beacon['receiver_name']
-            aircraft['reference_timestamp'] = beacon['reference_timestamp']
-            aircraft['timestamp'] = beacon['timestamp']
+            aircraft['reference_timestamp'] = beacon['reference_timestamp'].strftime("%m/%d/%Y, %H:%M:%S")
+            # aircraft['timestamp'] = beacon['timestamp']
 
             if aircraft['status'] == 'air':
                 aircraft['status'] = 'ground'
-                aircraft['landing_timestamp'] = beacon['timestamp']
+                aircraft['landing_timestamp'] = beacon['timestamp'].strftime("%m/%d/%Y, %H:%M:%S")
                 # if aircraft in DB
                 print("Updating aircraft {} as landed".format(registration))
                 update_flight(cursor, aircraft)
+                tracked_aircraft.pop(aircraft['address'])
                 # else add flight (landout)
 
     print('Tracked aircraft =========================')
@@ -168,12 +168,12 @@ def process_beacon(raw_message):
     try:
         beacon = parse(raw_message)
         if 'aircraft_type' in beacon.keys():
-            location = TRUCKEE
-            distance = get_distance_from_location(beacon, location)
-            if distance < 20:
-            # if distance < 3.21869:
-                pprint.pprint(beacon)
-                track_aircraft(beacon, location, distance)
+            locations = [SYERSTON, UKNHL, PORTMOAK]
+            for location in locations:
+                distance = get_distance_from_location(beacon, location)
+                if distance < 3.21869:
+                    pprint.pprint(beacon)
+                    track_aircraft(beacon, location, distance)
     except ParseError as e:
         print('Error, {}'.format(e.message))
 

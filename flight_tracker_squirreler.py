@@ -4,20 +4,21 @@ def create_daily_flights_table(cursor):
     create_table_sql = """
     DROP TABLE IF EXISTS daily_flights;
     
-    CREATE TABLE daily_flights (
-        id serial PRIMARY KEY,
-        airfield varchar, 
-        address varchar,
-        address_type int,
-        altitude float,
-        ground_speed float,
-        receiver_name varchar,
-        reference_timestamp varchar,
-        registration varchar,
-        takeoff_timestamp varchar,
-        landing_timestamp varchar,
-        status varchar
-    );
+    CREATE TABLE `daily_flights` (
+        `id` INT PRIMARY KEY AUTO_INCREMENT,
+        `airfield` varchar(255) DEFAULT NULL,
+        `address` varchar(255) DEFAULT NULL,
+        `address_type` int(11) DEFAULT NULL,
+        `altitude` float DEFAULT NULL,
+        `ground_speed` float DEFAULT NULL,
+        `receiver_name` varchar(255) DEFAULT NULL,
+        `reference_timestamp` timestamp NULL DEFAULT NULL,
+        `registration` varchar(255) DEFAULT NULL,
+        `takeoff_timestamp` timestamp NULL DEFAULT NULL,
+        `landing_timestamp` timestamp NULL DEFAULT NULL,
+        `status` varchar(255) DEFAULT NULL,
+        `launch_height` float DEFAULT NULL
+    )
     """
     cursor.execute(create_table_sql)
 
@@ -69,7 +70,8 @@ def update_flight(cursor, aircraft_data):
         registration = %s,
         takeoff_timestamp = %s,
         landing_timestamp = %s,
-        status = %s
+        status = %s,
+        launch_height = %s
     WHERE address = %s AND takeoff_timestamp = %s;"""
 
     update_row_data = (
@@ -84,6 +86,7 @@ def update_flight(cursor, aircraft_data):
         aircraft_data['takeoff_timestamp'],
         aircraft_data['landing_timestamp'],
         aircraft_data['status'],
+        aircraft_data['launch_height'],
         aircraft_data['address'],
         aircraft_data['takeoff_timestamp']
     )
@@ -91,11 +94,10 @@ def update_flight(cursor, aircraft_data):
     cursor.execute(insert_row_sql, update_row_data)
 
 
-# import psycopg2
-# from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
-#
-# conn = psycopg2.connect(user="postgres", password="postgres", host="172.19.0.3", dbname="flighttrackerdb")
-# conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-# cursor = conn.cursor()
-#
+import mysql.connector
+
+conn = mysql.connector.connect(user="scottedk_ogn", password="rategood13", host="91.238.163.173", database="scottedk_ogn_logs")
+cursor = conn.cursor()
 # create_daily_flights_table(cursor)
+
+print(cursor.execute("SHOW TABLES"))
