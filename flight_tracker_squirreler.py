@@ -242,7 +242,7 @@ def update_flight(cursor, aircraft_data):
 
 def get_beacons_for_flight(cursor, start_datetime, end_datetime):
     get_beacons_sql = """
-    SELECT reference_timestamp, altitude, ground_speed
+    SELECT timestamp, altitude, ground_speed
     FROM `received_beacons`
     WHERE reference_timestamp
     BETWEEN '%s AND '%s'
@@ -253,9 +253,24 @@ def get_beacons_for_flight(cursor, start_datetime, end_datetime):
     return cursor.fetchall()
 
 
-def get_beacons_between(cursor, start_datetime, end_datetime):
+def get_beacons_for_address_between(cursor, address, start_datetime, end_datetime):
+    print("Getting beacons between {} and {}".format(start_datetime, end_datetime))
     get_beacons_sql = """
-    SELECT reference_timestamp, altitude, ground_speed
+    SELECT timestamp, altitude, ground_speed
+    FROM `received_beacons`
+    WHERE address = %s
+    AND reference_timestamp
+    BETWEEN %s AND %s
+    """
+    get_beacons_data = (address, start_datetime, end_datetime)
+
+    cursor.execute(get_beacons_sql, get_beacons_data)
+    return cursor.fetchall()
+
+def get_beacons_between(cursor, start_datetime, end_datetime):
+    print("Getting beacons between {} and {}".format(start_datetime, end_datetime))
+    get_beacons_sql = """
+    SELECT timestamp, altitude, ground_speed
     FROM `received_beacons`
     WHERE reference_timestamp
     BETWEEN %s AND %s

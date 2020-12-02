@@ -40,5 +40,4 @@ def draw_alt_graph(registration, data):
     plt.ylabel('Altitude in m / speed in kph')
     # plt.title('Interesting Graph\nCheck it out')
     plt.legend()
-    plt.savefig('./graphs/{}-{}.png'.format(registration, times[0].strftime("%Y-%m-%d-%H:%M:%S")))
-
+    plt.savefig('./graphs/{}-{}.png'.format(registration, times[0].strftime("%Y-%m-%d-%H-%M-%S")))

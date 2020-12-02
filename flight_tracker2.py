@@ -9,7 +9,7 @@ import mysql.connector
 from ogn.client import AprsClient
 from ogn.parser import parse, ParseError
 
-from flight_tracker_squirreler import add_flight, update_flight, get_currently_airborne_flights, add_beacon, get_beacons_between
+from flight_tracker_squirreler import add_flight, update_flight, get_currently_airborne_flights, add_beacon, get_beacons_for_address_between
 
 from charts import draw_alt_graph
 
@@ -27,7 +27,7 @@ WINNIPEG = {'name': 'Winnipeg', 'latitude': 49.705749, 'longitude': -97.680345, 
 LASHAM = {'name': 'Lasham', 'latitude': 51.186965, 'longitude': -1.033020, 'elevation': 188}
 ST_AUBAN = {'name': 'Château-Arnoux-Saint-Auban', 'latitude': 44.06030204989779, 'longitude': 5.9928040471531805, 'elevation': 459}
 
-tracked_airfield = DARLTON
+tracked_airfield = ST_AUBAN
 
 AIRCRAFT_DATA_TEMPLATE = {
     'airfield': None,
@@ -45,7 +45,7 @@ AIRCRAFT_DATA_TEMPLATE = {
 
 
 def make_database_connection():
-    conn = mysql.connector.connect()
+    conn = mysql.connector.connect('creds')
     return conn
 
 
@@ -69,13 +69,10 @@ def import_device_data():
 
 def track_aircraft(beacon, airfield):
     print("track aircraft!")
-    try:
-        db_conn = make_database_connection()
-        add_beacon(db_conn.cursor(), beacon)
-        db_conn.close()
-    except Exception as ex:
-        print("oops " + str(ex))
-    print("after db")
+
+    db_conn = make_database_connection()
+
+    add_beacon(db_conn.cursor(), beacon)
 
     try:
         with open('ogn-ddb.json') as ogn_ddb:
@@ -131,9 +128,9 @@ def track_aircraft(beacon, airfield):
             if aircraft['status'] == 'ground':
                 aircraft['status'] = 'air'
                 aircraft['takeoff_timestamp'] = beacon['timestamp']  # .strftime("%m/%d/%Y, %H:%M:%S")
+                aircraft['launch_height'] = beacon['altitude'] - airfield['elevation']
                 print("Adding aircraft {} as launched".format(registration))
                 print(aircraft)
-                db_conn = make_database_connection()
                 add_flight(db_conn.cursor(), aircraft)
                 print(db_conn.commit())
             else:
@@ -141,14 +138,20 @@ def track_aircraft(beacon, airfield):
                 # - detect aero/winch
                 # - generate height graph
                 # todo remove unsued aircraft object fields eg 'tracking_launch_height'
-                time_since_launch = (beacon['timestamp'] - aircraft['takeoff_timestamp']).total_seconds()
-                if time_since_launch <= 40:
-                    print("Updating aircraft {} launch height".format(aircraft['registration']))
-                    if beacon['altitude'] - airfield['elevation'] > aircraft['launch_height']:
-                        aircraft['launch_height'] = beacon['altitude'] - airfield['elevation']
-                    db_conn = make_database_connection()
-                    update_flight(db_conn.cursor(), aircraft)
-                    print(db_conn.commit())
+                if (aircraft['takeoff_timestamp']):
+                    time_since_launch = (beacon['timestamp'] - aircraft['takeoff_timestamp']).total_seconds()
+                    print("time since launch: {}".format(time_since_launch))
+                    if time_since_launch <= 40:
+                        print("Updating aircraft {} launch height".format(aircraft['registration']))
+                        print("{} launch height is: {}".format(aircraft['registration'], aircraft['launch_height']))
+                        if beacon['altitude'] - airfield['elevation'] > aircraft['launch_height']:
+                            aircraft['launch_height'] = beacon['altitude'] - airfield['elevation']
+                            print("before LH DB")
+
+                            update_flight(db_conn.cursor(), aircraft)
+                            print(db_conn.commit())
+                            print("after LH DB")
+
 
         elif beacon['ground_speed'] < 30 and beacon['altitude'] - airfield['elevation'] < 15:
             print("aircraft detected on ground")
@@ -157,30 +160,49 @@ def track_aircraft(beacon, airfield):
                 aircraft['status'] = 'ground'
                 aircraft['landing_timestamp'] = beacon['timestamp']  # .strftime("%m/%d/%Y, %H:%M:%S"))
                 print("Updating aircraft {} as landed".format(registration))
-                print(aircraft)
-                db_conn = make_database_connection()
-                update_flight(db_conn.cursor(), aircraft)
-                print(db_conn.commit())
 
-
-                #debug try
-                try:
-
+                if aircraft['takeoff_timestamp']:
+                    update_flight(db_conn.cursor(), aircraft)
+                    print(db_conn.commit())
+                else:
+                    add_flight(db_conn.cursor(), aircraft)
+                    print(db_conn.commit())
+                pprint.pprint(aircraft)
+                print(aircraft['takeoff_timestamp'])
+                print('.' * 10)
+                print(aircraft['landing_timestamp'])
+                if aircraft['takeoff_timestamp'] and aircraft['landing_timestamp']:
+                    print("before graph")
+                    print("what the fuck")
                     # Generate graph of flight
+                    # todo  - timedelta(minutes=1)
+                    print(aircraft['takeoff_timestamp'])
+                    graph_start_time = aircraft['takeoff_timestamp'].strftime("%Y-%m-%d %H:%M:%S")
+                    print("Graph start time: {}".format(graph_start_time))
+                    graph_end_time = aircraft['landing_timestamp'].strftime("%Y-%m-%d %H:%M:%S")
+                    print("Graph end time: {}".format(graph_end_time))
+                    data = get_beacons_for_address_between(db_conn.cursor(),
+                                                           aircraft['address'],
+                                                           graph_start_time,
+                                                           graph_end_time)
+
+                    print("Graph data")
+                    print(data)
+
                     draw_alt_graph(
                         aircraft['registration'] if aircraft['registration'] != 'UNKNOWN' else aircraft['address'],
-                        get_beacons_between(db_conn.cursor(),
-                                            aircraft['launch_timestamp'] - timedelta(minutes=1),
-                                            aircraft['landing_timestamp'] - timedelta(minutes=1))
+                        data
                     )
-                except Exception as e:
-                    print("Graph error: {}".format(e))
+                print("after graph")
+
 
                 tracked_aircraft.pop(aircraft['address'])
 
     print('Tracked aircraft =========================')
     pprint.pprint(tracked_aircraft)
     print('End Tracked aircraft', len(tracked_aircraft), '======================')
+    db_conn.close()
+
 
 def process_beacon(raw_message):
     print("beacon!")
@@ -190,17 +212,18 @@ def process_beacon(raw_message):
         try:
             if beacon['beacon_type'] in ['aprs_aircraft', 'flarm']:
                 track_aircraft(beacon, tracked_airfield)
-        except KeyError:
+        except KeyError as e:
+            print(e)
             pass
-            print('beacon_type not field not found')
+            print('beacon_type field not found')
             # print(beacon)
     except ParseError as e:
         print('Error, {}'.format(e.message))
 
 
 print("Checking database for active flights")
-db_conn = make_database_connection()
-database_flights = get_currently_airborne_flights(db_conn.cursor())
+with make_database_connection() as db_conn:
+    database_flights = get_currently_airborne_flights(db_conn.cursor())
 
 
 tracked_aircraft = {}
