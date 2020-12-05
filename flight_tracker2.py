@@ -171,24 +171,11 @@ def track_aircraft(beacon, airfield):
                 if aircraft['takeoff_timestamp'] and aircraft['landing_timestamp']:
                     print("before graph")
                     print("what the fuck")
-                    # Generate graph of flight
-                    # todo  - timedelta(minutes=1)
+
                     print(aircraft['takeoff_timestamp'])
-                    graph_start_time = aircraft['takeoff_timestamp'].strftime("%Y-%m-%d %H:%M:%S")
-                    print("Graph start time: {}".format(graph_start_time))
-                    graph_end_time = aircraft['landing_timestamp'].strftime("%Y-%m-%d %H:%M:%S")
-                    print("Graph end time: {}".format(graph_end_time))
-                    data = get_beacons_for_address_between(db_conn.cursor(),
-                                                           aircraft['address'],
-                                                           graph_start_time,
-                                                           graph_end_time)
-
-                    print("Graph data")
-                    print(data)
-
                     draw_alt_graph(
-                        aircraft['registration'] if aircraft['registration'] != 'UNKNOWN' else aircraft['address'],
-                        data,
+                        db_conn.cursor(),
+                        aircraft,
                         config['TRACKER']['chart_directory']
                     )
                 print("after graph")

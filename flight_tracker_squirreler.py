@@ -240,6 +240,25 @@ def update_flight(cursor, aircraft_data):
     cursor.execute(insert_row_sql, update_row_data)
 
 
+def get_todays_flights(cursor):
+    get_flights_sql = """
+    SELECT * FROM `daily_flights`
+    WHERE DATE(`takeoff_timestamp`) = CURDATE()
+    ORDER BY id
+    """
+    get_flights_data = (datetime.now().strftime("%Y-%m-%d"))
+    cursor.execute(get_flights_sql, get_flights_data)
+    return cursor.fetchall()
+
+def get_all_flights(cursor):
+    get_flights_sql = """
+    SELECT * FROM `daily_flights`
+    ORDER BY id DESC
+    """
+    cursor.execute(get_flights_sql, )
+    return cursor.fetchall()
+
+
 def get_beacons_for_flight(cursor, start_datetime, end_datetime):
     get_beacons_sql = """
     SELECT timestamp, altitude, ground_speed
@@ -259,8 +278,8 @@ def get_beacons_for_address_between(cursor, address, start_datetime, end_datetim
     SELECT timestamp, altitude, ground_speed
     FROM `received_beacons`
     WHERE address = %s
-    AND reference_timestamp
-    BETWEEN %s AND %s
+    AND timestamp BETWEEN %s AND %s
+    ORDER BY timestamp
     """
     get_beacons_data = (address, start_datetime, end_datetime)
 
