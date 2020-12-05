@@ -1,42 +1,26 @@
+import configparser
 import requests
 import json
 from math import radians, cos, sin, asin, sqrt
 
-# import psycopg2
-# from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+import pprint
 
 import mysql.connector
 
 from ogn.client import AprsClient
 from ogn.parser import parse, ParseError
 
-# from flight_tracker_postgreser import add_flight, update_flight
-from flight_tracker_squirreler import add_flight, update_flight
+from flight_tracker_squirreler import add_flight, update_flight, get_currently_airborne_flights, add_beacon, get_beacons_for_address_between
 
-from datetime import datetime, timezone
+from charts import draw_alt_graph
 
-# from astral import LocationInfo
-# from datetime import datetime
-# from astral.sun import sun
-# from timezonefinder import TimezoneFinder
-# import pytz
+from datetime import datetime, timezone, timedelta
 
+config = configparser.ConfigParser()
+config.read('config.ini')
 
-DARLTON = {'name': 'Darlton', 'longitude': -0.854433, 'latitude': 53.248563, 'elevation': 47}
-UKNHL = {'name': 'DSGC', 'longitude': -0.854433, 'latitude': 53.248563}
-PORTMOAK = {'name': 'Portmoak', 'latitude': 56.188496, 'longitude': -3.321460, 'elevation': 109.728}
-ROCKTON = {'name': 'Rockton', 'latitude': 43.322222, 'longitude': -80.176389, 'elevation': 258}
-RIDEAU = {'name': 'Rideau', 'latitude': 45.100788, 'longitude': -75.632947, 'elevation': 87}
-TRUCKEE = {'name': 'Truckee', 'latitude': 39.321262, 'longitude': -120.139830, 'elevation': 1799}
-SYERSTON = {'name': 'Syerston', 'latitude': 53.024159, 'longitude': -0.911710, 'elevation': 69}
-MINDEN = {'name': 'Minden', 'latitude': 32.646111, 'longitude': -93.298056, 'elevation': 85}
-WINNIPEG = {'name': 'Winnipeg', 'latitude': 49.705749, 'longitude': -97.680345, 'elevation': 914}
-LASHAM = {'name': 'Lasham', 'latitude': 51.186965, 'longitude': -1.033020, 'elevation': 188}
-
-# timezone debug
-# BEIJING = {'name': 'Beijing', 'latitude': 39.916668, 'longitude': 116.383331, 'elevation': 188}
-
-tracked_airfield = LASHAM
+tracked_airfield_name = config['TRACKER']['tracked_airfield']
+tracked_airfield = json.loads(config['AIRFIELDS'][tracked_airfield_name])
 
 AIRCRAFT_DATA_TEMPLATE = {
     'airfield': None,
@@ -50,24 +34,20 @@ AIRCRAFT_DATA_TEMPLATE = {
     'takeoff_timestamp': None,
     'landing_timestamp': None,
     'status': None,
-
-    'tracking_launch_height': False,
-    'tracking_launch_start_time': None,
-    'launch_height': None,
 }
-
-tracked_aircraft = {}
 
 
 def make_database_connection():
-    # conn = psycopg2.connect(user="postgres", password="postgres", host="0.0.0.0", dbname="flighttrackerdb", port = "5469")
-    conn = mysql.connector.connect(user="scottedk_ogn", password="rategood13", host="91.238.163.173",
-                                   database="scottedk_ogn_logs")
+    conn = mysql.connector.connect(
+        user=config['TRACKER']['database_user'],
+        password=config['TRACKER']['database_password'],
+        host=config['TRACKER']['database_host'],
+        database = config['TRACKER']['database'])
     return conn
 
 
 def import_device_data():
-    device_data = requests.get('http://ddb.glidernet.org/download/').text
+    device_data = requests.get(config['TRACKER']['device_data_url']).text
 
     device_dict = {}
 
@@ -84,62 +64,12 @@ def import_device_data():
     return device_dict
 
 
-def haversine(lon1, lat1, lon2, lat2):
-    """
-    Calculate the great circle distance between two points
-    on the earth (specified in decimal degrees)
-    """
-    # convert decimal degrees to radians
-    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+def track_aircraft(beacon, airfield):
+    print("track aircraft!")
 
-    # haversine formula
-    dlon = lon2 - lon1
-    dlat = lat2 - lat1
-    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
-    c = 2 * asin(sqrt(a))
-    r = 6371  # Radius of earth in kilometers. Use 3956 for miles
-    return c * r
+    db_conn = make_database_connection()
 
-
-# def utc_to_local(utc_dt):
-#     return utc_dt.replace(tzinfo=timezone.utc).astimezone(tz=None)
-
-
-# def get_airfield_timezone(airfield_data):
-#     tf = TimezoneFinder()
-#     return tf.timezone_at(lng=airfield_data['longitude'], lat=airfield_data['latitude'])
-#
-#
-# def get_airfield_time(airfield_data):
-#     airfield_tz = pytz.timezone(get_airfield_timezone(airfield_data))
-#     return datetime.now(airfield_tz)
-#
-#
-# def get_airfield_sunset(airfield_data):
-#     city = LocationInfo(timezone=get_airfield_timezone(airfield_data),
-#                         latitude=airfield_data['latitude'],
-#                         longitude=airfield_data['longitude'])
-#     s = sun(city.observer, date=get_airfield_time(airfield_data), tzinfo=city.timezone)
-#     sunset = s['sunset']
-#     return sunset
-#
-#
-# def has_airfield_sun_set(airfield_data):
-#     airfield_current = get_airfield_time(airfield_data)
-#     airfield_sunset = get_airfield_sunset(airfield_data)
-#     get_airfield_sunset(airfield_data)
-#     if airfield_current > airfield_sunset:
-#         print("night!")
-#         print("{} > {}".format(airfield_current, airfield_sunset))
-#         return True
-#     print("Day!")
-#     print("{} !> {}".format(airfield_current, airfield_sunset))
-#     return False
-
-
-def track_aircraft(beacon, airfield, distance):
-    # if not has_airfield_sun_set(tracked_airfield):
-    #     quit()
+    add_beacon(db_conn.cursor(), beacon)
 
     try:
         with open('ogn-ddb.json') as ogn_ddb:
@@ -148,16 +78,19 @@ def track_aircraft(beacon, airfield, distance):
         device_dict = import_device_data()
 
     try:
-        registration = device_dict[beacon['address']]
+        registration = device_dict[beacon['address']].upper()
     except KeyError:
         registration = 'UNKNOWN'
 
-    # print('Received {aprs_type} for {registration}. Speed: {ground_speed}, Altitude: {altitude}'.format(
-    #     location=airfield['name'], registration=registration, **beacon))
+    if beacon['address'] in tracked_aircraft.keys():
+        # Remove outdated tracking
+        if datetime.date(tracked_aircraft[beacon['address']]['reference_timestamp']) < datetime.today().date():
+            tracked_aircraft.pop(beacon['address'])
+            print("Removed outdated tracking for: {}".format(beacon['address']))
+        else:
+            print('Tracking checked and is up to date')
 
-    # print('Received {aprs_type} for {registration} {distance} km from {location}. Speed: {ground_speed}, Altitude: {altitude}'.format(
-    #     location=airfield['name'], registration=registration, distance=distance, **beacon))
-
+    print(beacon['address'])
     if beacon['address'] not in tracked_aircraft.keys():
         print('Aircraft not tracked yet')
         new_aircraft = AIRCRAFT_DATA_TEMPLATE.copy()
@@ -169,121 +102,145 @@ def track_aircraft(beacon, airfield, distance):
         new_aircraft['ground_speed'] = beacon['ground_speed']
         new_aircraft['receiver_name'] = beacon['receiver_name']
         new_aircraft['reference_timestamp'] = beacon['reference_timestamp']  # .strftime("%m/%d/%Y, %H:%M:%S")
-        # new_aircraft['reference_timestamp'] = beacon['reference_timestamp'] #.strftime("%m/%d/%Y, %H:%M:%S")
         new_aircraft['registration'] = registration
 
-        if beacon['ground_speed'] > 0 and beacon['altitude'] - airfield['elevation'] > 30:
+        if beacon['ground_speed'] > 30 and beacon['altitude'] - airfield['elevation'] > 200:
             new_aircraft['status'] = 'air'
         else:
             new_aircraft['status'] = 'ground'
-
+        print("Starting to track aircraft ".format(registration))
         tracked_aircraft[beacon['address']] = new_aircraft
-
-
     else:
-        if beacon['ground_speed'] > 0 and beacon['altitude'] - airfield['elevation'] > 30:
-            aircraft = tracked_aircraft[beacon['address']]
+        aircraft = tracked_aircraft[beacon['address']]
+        print("=" * 10)
+        print("Aircraft {} is {}".format(aircraft['registration'], aircraft['status']))
+        print("Aircraft {} speed is {}".format(aircraft['registration'], beacon['ground_speed']))
+        print("Aircraft {} altitude is {}".format(aircraft['registration'], beacon['altitude']))
+        print("Aircraft {} height is {}".format(aircraft['registration'], beacon['altitude'] - airfield['elevation']))
+        print("=" * 10)
 
-            aircraft['altitude'] = beacon['altitude']
-            aircraft['ground_speed'] = beacon['ground_speed']
-            aircraft['receiver_name'] = beacon['receiver_name']
-            aircraft['reference_timestamp'] = beacon['reference_timestamp']  # .strftime("%m/%d/%Y, %H:%M:%S")
-
-            if aircraft['tracking_launch_height']:
-                print("aircraft: ", aircraft)
-                print("beacon: ", beacon)
-                time_since_launch = (beacon['timestamp'] - aircraft['tracking_launch_start_time']).total_seconds()
-                if beacon['altitude'] - airfield['elevation'] > aircraft['launch_height']:
-                    aircraft['launch_height'] = beacon['altitude'] - airfield['elevation']
-                if time_since_launch >= 40:
-                    print("Updating aircraft {} launch height".format(aircraft['registration']))
-                    print(aircraft)
-                    db_conn = make_database_connection()
-                    update_flight(db_conn.cursor(), aircraft)
-                    print(db_conn.commit())
-
-                    aircraft['tracking_launch_height'] = False
+        if beacon['ground_speed'] > 30 and beacon['altitude'] - airfield['elevation'] > 15:
+            print("airborne aircraft detected")
 
             if aircraft['status'] == 'ground':
                 aircraft['status'] = 'air'
                 aircraft['takeoff_timestamp'] = beacon['timestamp']  # .strftime("%m/%d/%Y, %H:%M:%S")
-                print("Adding aircraft {} as launched".format(registration))
-
-                aircraft['tracking_launch_height'] = True
-                aircraft['tracking_launch_start_time'] = beacon['timestamp']
                 aircraft['launch_height'] = beacon['altitude'] - airfield['elevation']
-
+                print("Adding aircraft {} as launched".format(registration))
                 print(aircraft)
-                db_conn = make_database_connection()
                 add_flight(db_conn.cursor(), aircraft)
                 print(db_conn.commit())
-            # elseif:
-            # check for aircraft in DB
-            # if present, update
-            # add_flight(cursor, aircraft)
-            # conn.commit()
+            else:
+                # todo detailed launch height calculation
+                # - detect aero/winch
+                # - generate height graph
+                # todo remove unsued aircraft object fields eg 'tracking_launch_height'
+                if (aircraft['takeoff_timestamp']):
+                    time_since_launch = (beacon['timestamp'] - aircraft['takeoff_timestamp']).total_seconds()
+                    print("time since launch: {}".format(time_since_launch))
+                    if time_since_launch <= 40:
+                        print("Updating aircraft {} launch height".format(aircraft['registration']))
+                        print("{} launch height is: {}".format(aircraft['registration'], aircraft['launch_height']))
+                        if beacon['altitude'] - airfield['elevation'] > aircraft['launch_height']:
+                            aircraft['launch_height'] = beacon['altitude'] - airfield['elevation']
+                            print("before LH DB")
 
-        if beacon['ground_speed'] < 30 and beacon['altitude'] - airfield['elevation'] < 30:
-            aircraft = tracked_aircraft[beacon['address']]
+                            update_flight(db_conn.cursor(), aircraft)
+                            print(db_conn.commit())
+                            print("after LH DB")
 
-            aircraft['altitude'] = beacon['altitude']
-            aircraft['ground_speed'] = beacon['ground_speed']
-            aircraft['receiver_name'] = beacon['receiver_name']
-            aircraft['reference_timestamp'] = beacon['reference_timestamp'] # .strftime("%m/%d/%Y, %H:%M:%S")
-            # aircraft['timestamp'] = beacon['timestamp']
+
+        elif beacon['ground_speed'] < 30 and beacon['altitude'] - airfield['elevation'] < 15:
+            print("aircraft detected on ground")
 
             if aircraft['status'] == 'air':
                 aircraft['status'] = 'ground'
                 aircraft['landing_timestamp'] = beacon['timestamp']  # .strftime("%m/%d/%Y, %H:%M:%S"))
-                # if aircraft in DB
                 print("Updating aircraft {} as landed".format(registration))
-                print(aircraft)
-                db_conn = make_database_connection()
-                update_flight(db_conn.cursor(), aircraft)
-                print(db_conn.commit())
+
+                if aircraft['takeoff_timestamp']:
+                    update_flight(db_conn.cursor(), aircraft)
+                    print(db_conn.commit())
+                else:
+                    add_flight(db_conn.cursor(), aircraft)
+                    print(db_conn.commit())
+                pprint.pprint(aircraft)
+                print(aircraft['takeoff_timestamp'])
+                print('.' * 10)
+                print(aircraft['landing_timestamp'])
+                if aircraft['takeoff_timestamp'] and aircraft['landing_timestamp']:
+                    print("before graph")
+                    print("what the fuck")
+
+                    print(aircraft['takeoff_timestamp'])
+                    draw_alt_graph(
+                        db_conn.cursor(),
+                        aircraft,
+                        config['TRACKER']['chart_directory']
+                    )
+                print("after graph")
+
+
                 tracked_aircraft.pop(aircraft['address'])
-                # else add flight (landout)
 
-    # print('Tracked aircraft =========================')
-    # pprint.pprint(tracked_aircraft)
-    # print('End Tracked aircraft', len(tracked_aircraft), '======================')
-
-
-def get_distance_from_location(beacon, beacon_location):
-    distance = haversine(
-        beacon['longitude'],
-        beacon['latitude'],
-        beacon_location['longitude'],
-        beacon_location['latitude']
-    )
-    return distance
+    print('Tracked aircraft =========================')
+    pprint.pprint(tracked_aircraft)
+    print('End Tracked aircraft', len(tracked_aircraft), '======================')
+    db_conn.close()
 
 
 def process_beacon(raw_message):
+    print("beacon!")
     try:
         beacon = parse(raw_message)
         # if 'aircraft_type' in beacon.keys():
         try:
-            if beacon['beacon_type'] == 'aprs_aircraft':
-                # locations = [SYERSTON]
-                # for location in locations:
-                distance = get_distance_from_location(beacon, tracked_airfield)
-                #     if distance < 3.21869:
-                # pprint.pprint(beacon)
-                track_aircraft(beacon, tracked_airfield, distance)
-        except KeyError:
-            print('beacon_type not field not found')
-            print(beacon)
+            if beacon['beacon_type'] in ['aprs_aircraft', 'flarm']:
+                track_aircraft(beacon, tracked_airfield)
+        except KeyError as e:
+            print(e)
+            pass
+            print('beacon_type field not found')
+            # print(beacon)
     except ParseError as e:
         print('Error, {}'.format(e.message))
 
 
+print("Checking database for active flights")
+with make_database_connection() as db_conn:
+    database_flights = get_currently_airborne_flights(db_conn.cursor())
+
+
+tracked_aircraft = {}
+
+for flight in database_flights:
+    db_flight = AIRCRAFT_DATA_TEMPLATE.copy()
+    db_flight['airfield'] = flight[1]
+    db_flight['address'] = flight[2]
+    db_flight['address_type'] = flight[3]
+    db_flight['altitude'] = flight[4]
+    db_flight['ground_speed'] = flight[5]
+    db_flight['receiver_name'] = flight[6]
+    db_flight['reference_timestamp'] = flight[7]
+    db_flight['registration'] = flight[8]
+    db_flight['takeoff_timestamp'] = flight[9]
+    db_flight['landing_timestamp'] = flight[10]
+    db_flight['status'] = flight[11]
+    db_flight['tracking_launch_height'] = flight[13]
+    db_flight['tracking_launch_start_time'] = flight[14]
+    db_flight['launch_height'] = flight[12]
+
+    tracked_aircraft[db_flight['address']] = db_flight
+
+print("=========")
+pprint.pprint(tracked_aircraft)
+print("=========")
+
 # if not has_airfield_sun_set(tracked_airfield):
-client = AprsClient(aprs_user='N0CALL', aprs_filter="r/{latitude}/{longitude}/5".format(**tracked_airfield))
+client = AprsClient(aprs_user='N0CALL', aprs_filter="r/{latitude}/{longitude}/{tracking_radius}".format(tracking_radius=config['TRACKER']['tracking_radius'], **tracked_airfield))
 client.connect()
 try:
     client.run(callback=process_beacon, autoreconnect=True)
 except KeyboardInterrupt:
     print('\nStop ogn gateway')
     client.disconnect()
-
