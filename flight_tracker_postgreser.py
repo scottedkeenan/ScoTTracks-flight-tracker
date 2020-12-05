@@ -37,7 +37,7 @@ def add_flight(cursor, aircraft_data):
         landing_timestamp,
         status
     )
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);"""
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);"""
 
     insert_row_data = (
         aircraft_data['airfield'],
@@ -70,7 +70,7 @@ def update_flight(cursor, aircraft_data):
         takeoff_timestamp = %s,
         landing_timestamp = %s,
         status = %s
-    WHERE address = %s;"""
+    WHERE address = %s AND takeoff_timestamp = %s;"""
 
     update_row_data = (
         aircraft_data['airfield'],
@@ -84,14 +84,12 @@ def update_flight(cursor, aircraft_data):
         aircraft_data['takeoff_timestamp'],
         aircraft_data['landing_timestamp'],
         aircraft_data['status'],
-        aircraft_data['address']
+        aircraft_data['address'],
+        aircraft_data['takeoff_timestamp']
     )
 
-    import psycopg2
-    try:
-        cursor.execute(insert_row_sql, update_row_data)
-    except:
-        print(cursor._last_executed)
+    cursor.execute(insert_row_sql, update_row_data)
+
 
 # import psycopg2
 # from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
