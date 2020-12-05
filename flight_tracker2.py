@@ -1,3 +1,4 @@
+import configparser
 import requests
 import json
 from math import radians, cos, sin, asin, sqrt
@@ -15,19 +16,11 @@ from charts import draw_alt_graph
 
 from datetime import datetime, timezone, timedelta
 
-DARLTON = {'name': 'Darlton', 'longitude': -0.854433, 'latitude': 53.248563, 'elevation': 47}
-UKNHL = {'name': 'DSGC', 'longitude': -0.854433, 'latitude': 53.248563}
-PORTMOAK = {'name': 'Portmoak', 'latitude': 56.188496, 'longitude': -3.321460, 'elevation': 109.728}
-ROCKTON = {'name': 'Rockton', 'latitude': 43.322222, 'longitude': -80.176389, 'elevation': 258}
-RIDEAU = {'name': 'Rideau', 'latitude': 45.100788, 'longitude': -75.632947, 'elevation': 87}
-TRUCKEE = {'name': 'Truckee', 'latitude': 39.321262, 'longitude': -120.139830, 'elevation': 1799}
-SYERSTON = {'name': 'Syerston', 'latitude': 53.024159, 'longitude': -0.911710, 'elevation': 69}
-MINDEN = {'name': 'Minden', 'latitude': 32.646111, 'longitude': -93.298056, 'elevation': 85}
-WINNIPEG = {'name': 'Winnipeg', 'latitude': 49.705749, 'longitude': -97.680345, 'elevation': 914}
-LASHAM = {'name': 'Lasham', 'latitude': 51.186965, 'longitude': -1.033020, 'elevation': 188}
-ST_AUBAN = {'name': 'Château-Arnoux-Saint-Auban', 'latitude': 44.06030204989779, 'longitude': 5.9928040471531805, 'elevation': 459}
+config = configparser.ConfigParser()
+config.read('config.ini')
 
-tracked_airfield = ST_AUBAN
+tracked_airfield_name = config['TRACKER']['tracked_airfield']
+tracked_airfield = json.loads(config['AIRFIELDS'][tracked_airfield_name])
 
 AIRCRAFT_DATA_TEMPLATE = {
     'airfield': None,
@@ -45,12 +38,16 @@ AIRCRAFT_DATA_TEMPLATE = {
 
 
 def make_database_connection():
-    conn = mysql.connector.connect('creds')
+    conn = mysql.connector.connect(
+        user=config['TRACKER']['database_user'],
+        password=config['TRACKER']['database_password'],
+        host=config['TRACKER']['database_host'],
+        database = config['TRACKER']['database'])
     return conn
 
 
 def import_device_data():
-    device_data = requests.get('http://ddb.glidernet.org/download/').text
+    device_data = requests.get(config['TRACKER']['device_data_url']).text
 
     device_dict = {}
 
@@ -81,7 +78,7 @@ def track_aircraft(beacon, airfield):
         device_dict = import_device_data()
 
     try:
-        registration = device_dict[beacon['address']]
+        registration = device_dict[beacon['address']].upper()
     except KeyError:
         registration = 'UNKNOWN'
 
@@ -191,7 +188,8 @@ def track_aircraft(beacon, airfield):
 
                     draw_alt_graph(
                         aircraft['registration'] if aircraft['registration'] != 'UNKNOWN' else aircraft['address'],
-                        data
+                        data,
+                        config['TRACKER']['chart_directory']
                     )
                 print("after graph")
 
@@ -252,7 +250,7 @@ pprint.pprint(tracked_aircraft)
 print("=========")
 
 # if not has_airfield_sun_set(tracked_airfield):
-client = AprsClient(aprs_user='N0CALL', aprs_filter="r/{latitude}/{longitude}/5".format(**tracked_airfield))
+client = AprsClient(aprs_user='N0CALL', aprs_filter="r/{latitude}/{longitude}/{tracking_radius}".format(tracking_radius=config['TRACKER']['tracking_radius'], **tracked_airfield))
 client.connect()
 try:
     client.run(callback=process_beacon, autoreconnect=True)
