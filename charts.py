@@ -13,17 +13,17 @@ def draw_alt_graph(cursor, aircraft, chart_directory):
     # Generate graph of flight
     # todo  - timedelta(minutes=1)
     graph_start_time = aircraft['takeoff_timestamp'].strftime("%Y-%m-%d %H:%M:%S")
-    print("Graph start time: {}".format(graph_start_time))
+    # print("Graph start time: {}".format(graph_start_time))
     graph_end_time = aircraft['landing_timestamp'].strftime("%Y-%m-%d %H:%M:%S")
-    print("Graph end time: {}".format(graph_end_time))
+    # print("Graph end time: {}".format(graph_end_time))
 
     data = get_beacons_for_address_between(cursor,
                                            aircraft['address'],
                                            graph_start_time,
                                            graph_end_time)
 
-    print("Graph data")
-    print(data)
+    # print("Graph data")
+    # print(data)
 
     if data:
         times = []

@@ -106,7 +106,7 @@ def get_airfield(airfield_name):
     return json.loads(config['AIRFIELDS'][airfield_name])
 
 
-def track_aircraft(beacon, airfield):
+def track_aircraft(beacon):
     log.debug("track aircraft!")
 
     db_conn = make_database_connection()
@@ -133,7 +133,7 @@ def track_aircraft(beacon, airfield):
             log.debug('Tracking checked and is up to date')
 
     airfield, at_airfield = detect_airfield(beacon)
-    airfield_name = airfield['name']
+    airfield_name = airfield['name'].lower()
 
     if beacon['address'] not in tracked_aircraft.keys():
         log.debug('Aircraft {} not tracked yet'.format(beacon['address']))
@@ -168,7 +168,7 @@ def track_aircraft(beacon, airfield):
                 aircraft['takeoff_timestamp'] = beacon['timestamp']  # .strftime("%m/%d/%Y, %H:%M:%S")
                 aircraft['takeoff_airfield'] = airfield_name
                 aircraft['launch_height'] = beacon['altitude'] - airfield['elevation']
-                log.info("Adding aircraft {} as launched".format(registration))
+                log.info("Adding aircraft {} as launched at {}".format(registration, airfield_name))
                 add_flight(db_conn.cursor(), aircraft)
             else:
                 # todo detailed launch height calculation
@@ -229,6 +229,9 @@ def process_beacon(raw_message):
         log.error('Error, {}'.format(e.message))
 
 
+log.info('Importing device data')
+import_device_data()
+
 log.info("Checking database for active flights")
 with make_database_connection() as db_conn:
     database_flights = get_currently_airborne_flights(db_conn.cursor())
@@ -251,6 +254,8 @@ for flight in database_flights:
     db_flight['tracking_launch_height'] = flight[13]
     db_flight['tracking_launch_start_time'] = flight[14]
     db_flight['launch_height'] = flight[12]
+    db_flight['takeoff_airfield'] = flight[15]
+    db_flight['landing_airfield'] = flight[16]
 
     tracked_aircraft[db_flight['address']] = db_flight
 

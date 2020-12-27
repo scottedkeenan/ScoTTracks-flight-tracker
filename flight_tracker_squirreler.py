@@ -72,6 +72,7 @@ def create_received_beacons_table(cursor):
 
 
 def get_currently_airborne_flights(cursor):
+    #todo: https://stackoverflow.com/questions/11565487/python-equivalent-of-php-mysql-fetch-array
     get_flights_sql = """
     SELECT * FROM `daily_flights`
     WHERE status = 'air'
