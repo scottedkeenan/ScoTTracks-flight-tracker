@@ -297,6 +297,21 @@ def get_beacons_for_address_between(cursor, address, start_datetime, end_datetim
     cursor.execute(get_beacons_sql, get_beacons_data)
     return cursor.fetchall()
 
+
+def get_igc_data_for_address_between(cursor, address, start_datetime, end_datetime):
+    # print("Getting beacons between {} and {}".format(start_datetime, end_datetime))
+    get_beacons_sql = """
+    SELECT timestamp, raw_message, altitude
+    FROM `received_beacons`
+    WHERE address = %s
+    AND timestamp BETWEEN %s AND %s
+    ORDER BY timestamp
+    """
+    get_beacons_data = (address, start_datetime, end_datetime)
+
+    cursor.execute(get_beacons_sql, get_beacons_data)
+    return cursor
+
 def get_beacons_between(cursor, start_datetime, end_datetime):
     # print("Getting beacons between {} and {}".format(start_datetime, end_datetime))
     get_beacons_sql = """
