@@ -164,10 +164,16 @@ def track_aircraft(beacon):
 
             if aircraft['status'] == 'ground' and at_airfield:
                 # Aircraft launch detected
+                logging.info('Before launch' + '='*10)
+                logging.info(pprint.pformat(aircraft))
+                logging.info('Before launch' + '='*10)
                 aircraft['status'] = 'air'
                 aircraft['takeoff_timestamp'] = beacon['timestamp']  # .strftime("%m/%d/%Y, %H:%M:%S")
                 aircraft['takeoff_airfield'] = airfield_name
                 aircraft['launch_height'] = beacon['altitude'] - airfield['elevation']
+                logging.info('After launch' + '='*10)
+                logging.info(pprint.pformat(aircraft))
+                logging.info('After launch' + '='*10)
                 log.info("Adding aircraft {} as launched at {}".format(registration, airfield_name))
                 add_flight(db_conn.cursor(), aircraft)
             else:
@@ -180,11 +186,19 @@ def track_aircraft(beacon):
                     if time_since_launch <= 40:
                         log.debug("Updating aircraft {} launch height".format(aircraft['registration']))
                         log.debug("{} launch height is: {}".format(aircraft['registration'], aircraft['launch_height']))
-                        if beacon['altitude'] - airfield['elevation'] > aircraft['launch_height']:
+                        try:
+                            # Record the maximum launch height in the first 40 seconds of launch
+                            if beacon['altitude'] - airfield['elevation'] > aircraft['launch_height']:
+                                aircraft['launch_height'] = beacon['altitude'] - airfield['elevation']
+                                update_flight(db_conn.cursor(), aircraft)
+                                db_conn.commit()
+                        except TypeError:
+                            # Probably a tracker restart error, just set the launch height as current AGL
                             aircraft['launch_height'] = beacon['altitude'] - airfield['elevation']
                             update_flight(db_conn.cursor(), aircraft)
                             db_conn.commit()
-        elif beacon['ground_speed'] < 20 and beacon['altitude'] - airfield['elevation'] < 15:
+
+        elif beacon['ground_speed'] <= 30 and beacon['altitude'] - airfield['elevation'] <= 15:
             log.debug("aircraft detected on ground")
 
             if aircraft['status'] == 'air' and at_airfield:
@@ -220,7 +234,10 @@ def process_beacon(raw_message):
         try:
             if beacon['beacon_type'] in ['aprs_aircraft', 'flarm']:
                 log.debug('Aircraft beacon received')
-                track_aircraft(beacon, tracked_airfield)
+                if beacon['aircraft_type'] in [1,2]:
+                    track_aircraft(beacon)
+                else:
+                    log.debug("Not a glider or tug")
         except KeyError as e:
             log.debug('Beacon type field not found')
             log.debug(e)

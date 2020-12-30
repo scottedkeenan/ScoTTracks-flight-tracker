@@ -40,7 +40,7 @@ def draw_alt_graph(cursor, aircraft, chart_directory):
 
         ax = plt.gca()
 
-        print(times)
+        # print(times)
 
         import matplotlib.dates as mdates
         myFmt = mdates.DateFormatter('%H:%M')
