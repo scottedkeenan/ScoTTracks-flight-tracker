@@ -46,13 +46,22 @@ AIRCRAFT_DATA_TEMPLATE = {
 }
 
 
-def make_database_connection():
-    conn = mysql.connector.connect(
-        user=config['TRACKER']['database_user'],
-        password=config['TRACKER']['database_password'],
-        host=config['TRACKER']['database_host'],
-        database = config['TRACKER']['database'])
-    return conn
+def make_database_connection(retry_counter=0):
+    if retry_counter > 5:
+        log.error("Failed to connect to database after 5 retries")
+        return False
+    try:
+        conn = mysql.connector.connect(
+            user=config['TRACKER']['database_user'],
+            password=config['TRACKER']['database_password'],
+            host=config['TRACKER']['database_host'],
+            database=config['TRACKER']['database'])
+        return conn
+    except mysql.connector.errors.InterfaceError as err:
+        log.error(err)
+        retry_counter += 1
+        return make_database_connection(retry_counter)
+
 
 
 def import_device_data():
@@ -110,6 +119,9 @@ def track_aircraft(beacon):
     log.debug("track aircraft!")
 
     db_conn = make_database_connection()
+    if not db_conn:
+        log.error("Unable to connect to database, skipping beacon")
+        return
 
     add_beacon(db_conn.cursor(), beacon)
 
@@ -228,6 +240,7 @@ def track_aircraft(beacon):
     log.debug('End Tracked aircraft {} {}'.format(len(tracked_aircraft), '======================'))
     db_conn.close()
 
+
 def process_beacon(raw_message):
     try:
         beacon = parse(raw_message)
@@ -250,8 +263,13 @@ log.info('Importing device data')
 import_device_data()
 
 log.info("Checking database for active flights")
-with make_database_connection() as db_conn:
+db_conn = make_database_connection()
+if db_conn:
     database_flights = get_currently_airborne_flights(db_conn.cursor())
+    db_conn.close()
+else:
+    log.error('Unable to retrieve database flights')
+    database_flights = {}
 
 tracked_aircraft = {}
 
