@@ -45,13 +45,15 @@ AIRCRAFT_DATA_TEMPLATE = {
     'status': None,
 }
 
+tracked_aircraft = {}
+
 
 def make_database_connection():
     conn = mysql.connector.connect(
         user=config['TRACKER']['database_user'],
         password=config['TRACKER']['database_password'],
         host=config['TRACKER']['database_host'],
-        database = config['TRACKER']['database'])
+        database=config['TRACKER']['database'])
     return conn
 
 
@@ -107,6 +109,7 @@ def get_airfield(airfield_name):
 
 
 def track_aircraft(beacon):
+
     log.debug("track aircraft!")
 
     db_conn = make_database_connection()
@@ -124,17 +127,16 @@ def track_aircraft(beacon):
     except KeyError:
         registration = 'UNKNOWN'
 
-    if beacon['address'] in tracked_aircraft.keys():
-        # Remove outdated tracking
-        if datetime.date(tracked_aircraft[beacon['address']]['reference_timestamp']) < datetime.today().date():
-            tracked_aircraft.pop(beacon['address'])
-            log.debug("Removed outdated tracking for: {}".format(beacon['address']))
-        else:
-            log.debug('Tracking checked and is up to date')
+    # if beacon['address'] in tracked_aircraft.keys():
+    #     # Remove outdated tracking
+    #     if datetime.date(tracked_aircraft[beacon['address']]['reference_timestamp']) < datetime.today().date():
+    #         tracked_aircraft.pop(beacon['address'])
+    #         log.debug("Removed outdated tracking for: {}".format(beacon['address']))
+    #     else:
+    #         log.debug('Tracking checked and is up to date')
 
     airfield, at_airfield = detect_airfield(beacon)
     airfield_name = airfield['name'].lower()
-
     if beacon['address'] not in tracked_aircraft.keys():
         log.debug('Aircraft {} not tracked yet'.format(beacon['address']))
         new_aircraft = AIRCRAFT_DATA_TEMPLATE.copy()
@@ -148,7 +150,7 @@ def track_aircraft(beacon):
         new_aircraft['reference_timestamp'] = beacon['reference_timestamp']  # .strftime("%m/%d/%Y, %H:%M:%S")
         new_aircraft['registration'] = registration
 
-        if beacon['ground_speed'] > 20 and beacon['altitude'] - airfield['elevation'] > 200:
+        if beacon['ground_speed'] >= 30 and beacon['altitude'] - airfield['elevation'] > 200:
             new_aircraft['status'] = 'air'
         else:
             new_aircraft['status'] = 'ground'
@@ -159,7 +161,7 @@ def track_aircraft(beacon):
         aircraft = tracked_aircraft[beacon['address']]
         aircraft['airfield'] = airfield_name
 
-        if beacon['ground_speed'] > 30 and beacon['altitude'] - airfield['elevation'] > 15:
+        if beacon['ground_speed'] >= 30 and beacon['altitude'] - airfield['elevation'] > 15:
             log.debug("airborne aircraft detected")
 
             if aircraft['status'] == 'ground' and at_airfield:
@@ -214,6 +216,7 @@ def track_aircraft(beacon):
     log.debug('End Tracked aircraft {} {}'.format(len(tracked_aircraft), '======================'))
     db_conn.close()
 
+
 def process_beacon(raw_message):
     try:
         beacon = parse(raw_message)
@@ -236,7 +239,7 @@ log.info("Checking database for active flights")
 with make_database_connection() as db_conn:
     database_flights = get_currently_airborne_flights(db_conn.cursor())
 
-tracked_aircraft = {}
+
 
 for flight in database_flights:
     db_flight = AIRCRAFT_DATA_TEMPLATE.copy()
@@ -263,10 +266,20 @@ log.info("=========")
 log.info(pprint.pformat(tracked_aircraft))
 log.info("=========")
 
-client = AprsClient(aprs_user='N0CALL', aprs_filter="r/{latitude}/{longitude}/{tracking_radius}".format(tracking_radius=config['TRACKER']['tracking_radius'], **tracked_airfield))
-client.connect()
-try:
-    client.run(callback=process_beacon, autoreconnect=True)
-except KeyboardInterrupt:
-    print('\nStop ogn gateway')
-    client.disconnect()
+# client = AprsClient(aprs_user='N0CALL', aprs_filter="r/{latitude}/{longitude}/{tracking_radius}".format(tracking_radius=config['TRACKER']['tracking_radius'], **tracked_airfield))
+# client.connect()
+# try:
+#     client.run(callback=process_beacon, autoreconnect=True)
+# except KeyboardInterrupt:
+#     print('\nStop ogn gateway')
+#     client.disconnect()
+
+from flight_tracker_squirreler import get_raw_beacons_for_address_between
+
+db_conn = make_database_connection()
+beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), '4062D7', '2020-12-27 09:23:09', '2020-12-27 13:32:18')
+
+for beacon in beacons:
+    log.warning(beacon['timestamp'])
+    beacon['address'] = beacon['address'] + 'TEST2'
+    track_aircraft(beacon)

@@ -270,14 +270,15 @@ def get_all_flights(cursor):
     return cursor.fetchall()
 
 
-def get_beacons_for_flight(cursor, start_datetime, end_datetime):
+def get_raw_beacons_for_address_between(cursor, address, start_datetime, end_datetime):
+    # print("Getting beacons between {} and {}".format(start_datetime, end_datetime))
     get_beacons_sql = """
-    SELECT timestamp, altitude, ground_speed
-    FROM `received_beacons`
-    WHERE reference_timestamp
-    BETWEEN '%s AND '%s'
+    SELECT * FROM `received_beacons`
+    WHERE address = %s
+    AND timestamp BETWEEN %s AND %s
+    ORDER BY timestamp
     """
-    get_beacons_data = (start_datetime, end_datetime)
+    get_beacons_data = (address, start_datetime, end_datetime)
 
     cursor.execute(get_beacons_sql, get_beacons_data)
     return cursor.fetchall()
