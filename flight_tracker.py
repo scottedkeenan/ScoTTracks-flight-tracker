@@ -46,6 +46,14 @@ AIRCRAFT_DATA_TEMPLATE = {
     'status': None,
 }
 
+AIRFIELD_DATA = {}
+for airfield in config['AIRFIELDS']:
+    airfield_json = json.loads(config['AIRFIELDS'][airfield])
+    AIRFIELD_DATA[(float(airfield_json['latitude']), float(airfield_json['longitude']))] = airfield_json
+
+AIRFIELD_LOCATIONS = [x for x in AIRFIELD_DATA.keys()]
+AIRFIELD_TREE = kdtree.KDTree(AIRFIELD_LOCATIONS)
+
 
 def make_database_connection(retry_counter=0):
     if retry_counter > 5:
@@ -90,15 +98,9 @@ def detect_airfield(beacon):
     """
     # todo: We need a database table for airfields rather than config
     detection_radius = float(config['TRACKER']['airfield_detection_radius'])
-    airfield_data = {}
-    for airfield in config['AIRFIELDS']:
-        airfield_json = json.loads(config['AIRFIELDS'][airfield])
-        airfield_data[(float(airfield_json['latitude']), float(airfield_json['longitude']))] = airfield_json
 
-    airfield_locations = [x for x in airfield_data.keys()]
-    tree = kdtree.KDTree(airfield_locations)
-    _, closest_airfield_index = tree.query((float(beacon['latitude']), float(beacon['longitude'])), 1)
-    closest_airfield = airfield_data[airfield_locations[closest_airfield_index]]
+    _, closest_airfield_index = AIRFIELD_TREE.query((float(beacon['latitude']), float(beacon['longitude'])), 1)
+    closest_airfield = AIRFIELD_DATA[AIRFIELD_LOCATIONS[closest_airfield_index]]
     distance_to_nearest = measure_distance.distance(
         [float(closest_airfield['latitude']), float(closest_airfield['longitude'])],
         (beacon['latitude'], beacon['longitude'])).km
