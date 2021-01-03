@@ -1,7 +1,6 @@
 import configparser
 import requests
 import json
-from math import radians, cos, sin, asin, sqrt
 import logging
 import os
 
@@ -16,9 +15,11 @@ from flight_tracker_squirreler import add_flight, update_flight, get_currently_a
 
 from charts import draw_alt_graph
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 
 from geopy import distance as measure_distance
+
+from scipy.spatial import kdtree
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -63,7 +64,6 @@ def make_database_connection(retry_counter=0):
         return make_database_connection(retry_counter)
 
 
-
 def import_device_data():
     device_data = requests.get(config['TRACKER']['device_data_url']).text
 
@@ -90,25 +90,24 @@ def detect_airfield(beacon):
     """
     # todo: We need a database table for airfields rather than config
     detection_radius = float(config['TRACKER']['airfield_detection_radius'])
-    nearest = 'unknown'
-    nearest_distance = None
+    airfield_data = {}
     for airfield in config['AIRFIELDS']:
-        airfield_data = json.loads(config['AIRFIELDS'][airfield])
+        airfield_json = json.loads(config['AIRFIELDS'][airfield])
+        airfield_data[(float(airfield_json['latitude']), float(airfield_json['longitude']))] = airfield_json
 
-        distance = measure_distance.distance(
-            (airfield_data['latitude'], airfield_data['longitude']),
-            (beacon['latitude'], beacon['longitude'])).km
+    airfield_locations = [x for x in airfield_data.keys()]
+    tree = kdtree.KDTree(airfield_locations)
+    _, closest_airfield_index = tree.query((float(beacon['latitude']), float(beacon['longitude'])), 1)
+    closest_airfield = airfield_data[airfield_locations[closest_airfield_index]]
+    distance_to_nearest = measure_distance.distance(
+        [float(closest_airfield['latitude']), float(closest_airfield['longitude'])],
+        (beacon['latitude'], beacon['longitude'])).km
+    log.debug(("nearest is: {} at {}".format(closest_airfield['name'], distance_to_nearest)))
 
-        log.debug("Distance to: {} is {}".format(airfield_data['name'], distance))
-
-        if distance < detection_radius:
-            # return airfield, airfield_data['name'].lower().replace(' -', '_'), True
-            return airfield_data, True
-        elif nearest_distance is None or distance < nearest_distance:
-            nearest_distance = distance
-            nearest = airfield_data
-    log.debug("nearest is: {} at {}".format(nearest, nearest_distance))
-    return nearest, False
+    if distance_to_nearest < detection_radius:
+        return closest_airfield, True
+    else:
+        return closest_airfield, False
 
 
 def get_airfield(airfield_name):
@@ -298,7 +297,7 @@ log.info("=========")
 log.info(pprint.pformat(tracked_aircraft))
 log.info("=========")
 
-client = AprsClient(aprs_user='N0CALL', aprs_filter="r/{latitude}/{longitude}/{tracking_radius}".format(tracking_radius=config['TRACKER']['tracking_radius'], **tracked_airfield))
+client = AprsClient(aprs_user='N0CALL', aprs_filter="a/59.601095/-11.074219/49.866317/2.724609")
 client.connect()
 try:
     client.run(callback=process_beacon, autoreconnect=True)
