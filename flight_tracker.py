@@ -11,7 +11,7 @@ import mysql.connector
 from ogn.client import AprsClient
 from ogn.parser import parse, ParseError
 
-from flight_tracker_squirreler import add_flight, update_flight, get_currently_airborne_flights, add_beacon, get_beacons_for_address_between
+from flight_tracker_squirreler import add_flight, update_flight, get_currently_airborne_flights, add_beacon, get_beacons_for_address_between, get_raw_beacons_between
 
 from charts import draw_alt_graph
 
@@ -136,7 +136,7 @@ def track_aircraft(beacon):
         log.error("Unable to connect to database, skipping beacon")
         return
 
-    add_beacon(db_conn.cursor(), beacon)
+    # add_beacon(db_conn.cursor(), beacon)
 
     try:
         with open('ogn-ddb.json') as ogn_ddb:
@@ -203,14 +203,14 @@ def track_aircraft(beacon):
 
                 # Aircraft launch detected
                 logging.info('Before launch' + '='*10)
-                logging.info(pprint.pformat(aircraft))
+                logging.info(pprint.pformat(aircraft.to_dict()))
                 logging.info('Before launch' + '='*10)
                 aircraft.status = 'air'
                 aircraft.takeoff_timestamp = beacon['timestamp']  # .strftime("%m/%d/%Y, %H:%M:%S")
                 aircraft.takeoff_airfield = airfield_name
                 aircraft.launch_height = beacon['altitude'] - airfield['elevation']
                 logging.info('After launch' + '='*10)
-                logging.info(pprint.pformat(aircraft))
+                logging.info(pprint.pformat(aircraft.to_dict()))
                 logging.info('After launch' + '='*10)
                 log.info("Adding aircraft {} as launched at {}".format(registration, airfield_name))
                 add_flight(db_conn.cursor(), aircraft.to_dict())
@@ -251,15 +251,14 @@ def track_aircraft(beacon):
                 #  'timestamp': datetime.datetime(2021, 1, 4, 11, 47, 34),
                 #  'track': 67,
                 #  'turn_rate': -0.6000000000000001}
-
-                if (aircraft.takeoff_timestamp):
+                if aircraft.takeoff_timestamp and not aircraft.launch_complete:
                     time_since_launch = (beacon['timestamp'] - aircraft.takeoff_timestamp).total_seconds()
                     log.debug("time since launch: {}".format(time_since_launch))
 
                     # todo config
 
-                    winch_tracking_time = 40
-                    aerotow_self_tracking_time = 240
+                    winch_tracking_time = 100
+                    aerotow_self_tracking_time = 900
 
                     if aircraft.launch_type == 'aerotow':
                         launch_tracking_time = aerotow_self_tracking_time
@@ -272,6 +271,8 @@ def track_aircraft(beacon):
                         # global average_launch_speed
                         # average_launch_speed = average_launch_speed +
 
+                        from statistics import mean, StatisticsError
+
                         log.debug("Updating aircraft {} launch height".format(aircraft.registration))
                         log.debug("{} launch height is: {}".format(aircraft.registration, aircraft.launch_height))
                         log.debug("{} launch vertical speed is {}".format(aircraft.registration, beacon['climb_rate']))
@@ -280,15 +281,47 @@ def track_aircraft(beacon):
                         if beacon['climb_rate'] > aircraft.max_launch_climb_rate:
                             aircraft.max_launch_climb_rate = beacon['climb_rate']
 
-                        import statistics
-
                         if time_since_launch > 5:
-                            if aircraft.max_launch_climb_rate > 2:
+                            if aircraft.average_launch_climb_rate > 5:
                                 aircraft.launch_type = 'winch'
                             else:
-                                aircraft.launch_type = 'areotow'
+                                aircraft.launch_type = 'aerotow'
+
+                            if len(aircraft.launch_climb_rates) > 10:
+
+                                try:
+
+                                    recent_average = mean(aircraft.launch_climb_rates[-15:])
+
+
+                                    recent_average_diff = recent_average - aircraft.average_launch_climb_rate
+
+
+                                    if recent_average_diff < -1.5 or recent_average_diff > 1.5:
+                                        sl = None
+                                        if recent_average_diff < -1.5:
+                                            sl = "sink"
+                                        if recent_average_diff > 1.5:
+                                            sl ="lift"
+                                        aircraft.launch_complete = True
+                                        log.info(pprint.pformat(aircraft.launch_climb_rates))
+                                        log.info('{} launch complete at {}! Launch type: {}, Launch height: {}, Launch time: {}, Average vertical: {}, Recent Average Vertical: {}, Difference: {}, Sink/lift: {}'.format(
+                                            aircraft.registration,
+                                            aircraft.takeoff_airfield,
+                                            aircraft.launch_type,
+                                            aircraft.launch_height * 3.281,
+                                            time_since_launch,
+                                            aircraft.average_launch_climb_rate,
+                                            recent_average,
+                                            recent_average_diff,
+                                            sl
+                                        ))
+                                except StatisticsError:
+                                    log.info("No data to average, skipping")
+
+
                             aircraft.add_launch_climb_rate_point(beacon['climb_rate'])
-                            print(statistics.mean(aircraft.launch_climb_rates))
+                            aircraft.average_launch_climb_rate = mean(aircraft.launch_climb_rates)
 
                         try:
                             # Record the maximum launch height
@@ -397,9 +430,15 @@ log.info("=========")
 from flight_tracker_squirreler import get_raw_beacons_for_address_between
 
 db_conn = make_database_connection()
-beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), '4062D7', '2020-12-27 09:23:09', '2020-12-27 13:32:18')
+beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-24 07:00:00', '2020-12-24 18:00:00')
+# beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD51CC', '2020-12-22 15:27:19', '2020-12-22 15:33:15')
+# beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD5133', '2020-12-22 15:44:33', '2020-12-22 16:08:56')
+# beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), '405612', '2020-12-22 15:35:59', '2020-12-22 15:52:17')
+
+
+print(len(beacons))
 
 for beacon in beacons:
-    log.warning(beacon['timestamp'])
-    beacon['address'] = beacon['address'] + 'TEST2'
+    # log.warning(beacon)
+    beacon['address'] = beacon['address']
     track_aircraft(beacon)

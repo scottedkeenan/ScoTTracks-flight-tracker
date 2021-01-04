@@ -10,10 +10,10 @@ from flight_tracker_squirreler import get_beacons_for_address_between
 def draw_alt_graph(cursor, aircraft, chart_directory):
     # Generate graph of flight
     # todo  - timedelta(minutes=1)
-    graph_start_time = aircraft['takeoff_timestamp'].strftime("%Y-%m-%d %H:%M:%S")
-    graph_end_time = aircraft['landing_timestamp'].strftime("%Y-%m-%d %H:%M:%S")
+    graph_start_time = aircraft.takeoff_timestamp.strftime("%Y-%m-%d %H:%M:%S")
+    graph_end_time = aircraft.landing_timestamp.strftime("%Y-%m-%d %H:%M:%S")
     data = get_beacons_for_address_between(cursor,
-                                           aircraft['address'],
+                                           aircraft.address,
                                            graph_start_time,
                                            graph_end_time)
     if data:
@@ -42,7 +42,7 @@ def draw_alt_graph(cursor, aircraft, chart_directory):
         plt.ylabel('Altitude in m / speed in kph')
         # plt.title('Interesting Graph\nCheck it out')
         plt.legend()
-        plt.savefig('{}/{}-{}.png'.format(chart_directory, aircraft['registration'], times[0].strftime("%Y-%m-%d-%H-%M-%S")))
+        plt.savefig('{}/{}-{}.png'.format(chart_directory, aircraft.registration, times[0].strftime("%Y-%m-%d-%H-%M-%S")))
         plt.clf()
         plt.cla()
         plt.close()
