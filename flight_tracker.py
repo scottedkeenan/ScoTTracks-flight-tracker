@@ -127,7 +127,7 @@ def get_airfield(airfield_name):
     return json.loads(config['AIRFIELDS'][airfield_name])
 
 
-def track_aircraft(beacon):
+def track_aircraft(beacon, save_beacon=True):
 
     log.debug("track aircraft!")
 
@@ -136,7 +136,8 @@ def track_aircraft(beacon):
         log.error("Unable to connect to database, skipping beacon")
         return
 
-    # add_beacon(db_conn.cursor(), beacon)
+    if save_beacon:
+        add_beacon(db_conn.cursor(), beacon)
 
     try:
         with open('ogn-ddb.json') as ogn_ddb:
@@ -441,4 +442,4 @@ print(len(beacons))
 for beacon in beacons:
     # log.warning(beacon)
     beacon['address'] = beacon['address']
-    track_aircraft(beacon)
+    track_aircraft(beacon, save_beacon=False)
