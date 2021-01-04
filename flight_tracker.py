@@ -1,7 +1,8 @@
 import configparser
 import requests
 import json
-from math import radians, cos, sin, asin, sqrt
+import logging
+import os
 
 import pprint
 
@@ -14,13 +15,20 @@ from flight_tracker_squirreler import add_flight, update_flight, get_currently_a
 
 from charts import draw_alt_graph
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
+
+from geopy import distance as measure_distance
+
+from scipy.spatial import kdtree
 
 config = configparser.ConfigParser()
 config.read('config.ini')
 
 tracked_airfield_name = config['TRACKER']['tracked_airfield']
 tracked_airfield = json.loads(config['AIRFIELDS'][tracked_airfield_name])
+
+logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
+log = logging.getLogger(__name__)
 
 AIRCRAFT_DATA_TEMPLATE = {
     'airfield': None,
@@ -32,18 +40,36 @@ AIRCRAFT_DATA_TEMPLATE = {
     'reference_timestamp': None,
     'registration': None,
     'takeoff_timestamp': None,
+    'takeoff_airfield': None,
     'landing_timestamp': None,
+    'landing_airfield': None,
     'status': None,
 }
 
+AIRFIELD_DATA = {}
+for airfield in config['AIRFIELDS']:
+    airfield_json = json.loads(config['AIRFIELDS'][airfield])
+    AIRFIELD_DATA[(float(airfield_json['latitude']), float(airfield_json['longitude']))] = airfield_json
 
-def make_database_connection():
-    conn = mysql.connector.connect(
-        user=config['TRACKER']['database_user'],
-        password=config['TRACKER']['database_password'],
-        host=config['TRACKER']['database_host'],
-        database = config['TRACKER']['database'])
-    return conn
+AIRFIELD_LOCATIONS = [x for x in AIRFIELD_DATA.keys()]
+AIRFIELD_TREE = kdtree.KDTree(AIRFIELD_LOCATIONS)
+
+
+def make_database_connection(retry_counter=0):
+    if retry_counter > 5:
+        log.error("Failed to connect to database after 5 retries")
+        return False
+    try:
+        conn = mysql.connector.connect(
+            user=config['TRACKER']['database_user'],
+            password=config['TRACKER']['database_password'],
+            host=config['TRACKER']['database_host'],
+            database=config['TRACKER']['database'])
+        return conn
+    except mysql.connector.errors.InterfaceError as err:
+        log.error(err)
+        retry_counter += 1
+        return make_database_connection(retry_counter)
 
 
 def import_device_data():
@@ -64,10 +90,39 @@ def import_device_data():
     return device_dict
 
 
-def track_aircraft(beacon, airfield):
-    print("track aircraft!")
+def detect_airfield(beacon):
+    """
+    :param beacon:
+    :param type:
+    :return:
+    """
+    # todo: We need a database table for airfields rather than config
+    detection_radius = float(config['TRACKER']['airfield_detection_radius'])
+
+    _, closest_airfield_index = AIRFIELD_TREE.query((float(beacon['latitude']), float(beacon['longitude'])), 1)
+    closest_airfield = AIRFIELD_DATA[AIRFIELD_LOCATIONS[closest_airfield_index]]
+    distance_to_nearest = measure_distance.distance(
+        [float(closest_airfield['latitude']), float(closest_airfield['longitude'])],
+        (beacon['latitude'], beacon['longitude'])).km
+    log.debug(("nearest is: {} at {}".format(closest_airfield['name'], distance_to_nearest)))
+
+    if distance_to_nearest < detection_radius:
+        return closest_airfield, True
+    else:
+        return closest_airfield, False
+
+
+def get_airfield(airfield_name):
+    return json.loads(config['AIRFIELDS'][airfield_name])
+
+
+def track_aircraft(beacon):
+    log.debug("track aircraft!")
 
     db_conn = make_database_connection()
+    if not db_conn:
+        log.error("Unable to connect to database, skipping beacon")
+        return
 
     add_beacon(db_conn.cursor(), beacon)
 
@@ -86,16 +141,18 @@ def track_aircraft(beacon, airfield):
         # Remove outdated tracking
         if datetime.date(tracked_aircraft[beacon['address']]['reference_timestamp']) < datetime.today().date():
             tracked_aircraft.pop(beacon['address'])
-            print("Removed outdated tracking for: {}".format(beacon['address']))
+            log.debug("Removed outdated tracking for: {}".format(beacon['address']))
         else:
-            print('Tracking checked and is up to date')
+            log.debug('Tracking checked and is up to date')
 
-    print(beacon['address'])
+    airfield, at_airfield = detect_airfield(beacon)
+    airfield_name = airfield['name'].lower()
+
     if beacon['address'] not in tracked_aircraft.keys():
-        print('Aircraft not tracked yet')
+        log.debug('Aircraft {} not tracked yet'.format(beacon['address']))
         new_aircraft = AIRCRAFT_DATA_TEMPLATE.copy()
 
-        new_aircraft['airfield'] = airfield['name']
+        new_aircraft['airfield'] = airfield_name
         new_aircraft['address'] = beacon['address']
         new_aircraft['address_type'] = beacon['address_type']
         new_aircraft['altitude'] = beacon['altitude']
@@ -104,112 +161,116 @@ def track_aircraft(beacon, airfield):
         new_aircraft['reference_timestamp'] = beacon['reference_timestamp']  # .strftime("%m/%d/%Y, %H:%M:%S")
         new_aircraft['registration'] = registration
 
-        if beacon['ground_speed'] > 30 and beacon['altitude'] - airfield['elevation'] > 200:
+        if beacon['ground_speed'] > 20 and beacon['altitude'] - airfield['elevation'] > 200:
             new_aircraft['status'] = 'air'
         else:
             new_aircraft['status'] = 'ground'
-        print("Starting to track aircraft ".format(registration))
+        log.debug("Starting to track aircraft ".format(registration))
         tracked_aircraft[beacon['address']] = new_aircraft
     else:
+        log.debug('Updating tracked aircraft')
         aircraft = tracked_aircraft[beacon['address']]
-        print("=" * 10)
-        print("Aircraft {} is {}".format(aircraft['registration'], aircraft['status']))
-        print("Aircraft {} speed is {}".format(aircraft['registration'], beacon['ground_speed']))
-        print("Aircraft {} altitude is {}".format(aircraft['registration'], beacon['altitude']))
-        print("Aircraft {} height is {}".format(aircraft['registration'], beacon['altitude'] - airfield['elevation']))
-        print("=" * 10)
+        aircraft['airfield'] = airfield_name
 
         if beacon['ground_speed'] > 30 and beacon['altitude'] - airfield['elevation'] > 15:
-            print("airborne aircraft detected")
+            log.debug("airborne aircraft detected")
 
-            if aircraft['status'] == 'ground':
+            if aircraft['status'] == 'ground' and at_airfield:
+                # Aircraft launch detected
+                logging.info('Before launch' + '='*10)
+                logging.info(pprint.pformat(aircraft))
+                logging.info('Before launch' + '='*10)
                 aircraft['status'] = 'air'
                 aircraft['takeoff_timestamp'] = beacon['timestamp']  # .strftime("%m/%d/%Y, %H:%M:%S")
+                aircraft['takeoff_airfield'] = airfield_name
                 aircraft['launch_height'] = beacon['altitude'] - airfield['elevation']
-                print("Adding aircraft {} as launched".format(registration))
-                print(aircraft)
+                logging.info('After launch' + '='*10)
+                logging.info(pprint.pformat(aircraft))
+                logging.info('After launch' + '='*10)
+                log.info("Adding aircraft {} as launched at {}".format(registration, airfield_name))
                 add_flight(db_conn.cursor(), aircraft)
-                print(db_conn.commit())
             else:
                 # todo detailed launch height calculation
                 # - detect aero/winch
-                # - generate height graph
                 # todo remove unsued aircraft object fields eg 'tracking_launch_height'
                 if (aircraft['takeoff_timestamp']):
                     time_since_launch = (beacon['timestamp'] - aircraft['takeoff_timestamp']).total_seconds()
-                    print("time since launch: {}".format(time_since_launch))
+                    log.debug("time since launch: {}".format(time_since_launch))
                     if time_since_launch <= 40:
-                        print("Updating aircraft {} launch height".format(aircraft['registration']))
-                        print("{} launch height is: {}".format(aircraft['registration'], aircraft['launch_height']))
-                        if beacon['altitude'] - airfield['elevation'] > aircraft['launch_height']:
+                        log.debug("Updating aircraft {} launch height".format(aircraft['registration']))
+                        log.debug("{} launch height is: {}".format(aircraft['registration'], aircraft['launch_height']))
+                        try:
+                            # Record the maximum launch height in the first 40 seconds of launch
+                            if beacon['altitude'] - airfield['elevation'] > aircraft['launch_height']:
+                                aircraft['launch_height'] = beacon['altitude'] - airfield['elevation']
+                                update_flight(db_conn.cursor(), aircraft)
+                                db_conn.commit()
+                        except TypeError:
+                            # Probably a tracker restart error, just set the launch height as current AGL
                             aircraft['launch_height'] = beacon['altitude'] - airfield['elevation']
-                            print("before LH DB")
-
                             update_flight(db_conn.cursor(), aircraft)
-                            print(db_conn.commit())
-                            print("after LH DB")
+                            db_conn.commit()
 
+        elif beacon['ground_speed'] <= 30 and beacon['altitude'] - airfield['elevation'] <= 15:
+            log.debug("aircraft detected on ground")
 
-        elif beacon['ground_speed'] < 30 and beacon['altitude'] - airfield['elevation'] < 15:
-            print("aircraft detected on ground")
-
-            if aircraft['status'] == 'air':
+            if aircraft['status'] == 'air' and at_airfield:
+                # Aircraft landing detected
                 aircraft['status'] = 'ground'
                 aircraft['landing_timestamp'] = beacon['timestamp']  # .strftime("%m/%d/%Y, %H:%M:%S"))
-                print("Updating aircraft {} as landed".format(registration))
+                aircraft['landing_airfield'] = airfield_name
+                log.info("Updating aircraft {} as landed".format(registration))
 
                 if aircraft['takeoff_timestamp']:
                     update_flight(db_conn.cursor(), aircraft)
-                    print(db_conn.commit())
+                    db_conn.commit()
                 else:
                     add_flight(db_conn.cursor(), aircraft)
-                    print(db_conn.commit())
-                pprint.pprint(aircraft)
-                print(aircraft['takeoff_timestamp'])
-                print('.' * 10)
-                print(aircraft['landing_timestamp'])
+                    db_conn.commit()
+                log.info('Aircraft {} flew from {} to {}'.format(aircraft['registration'], aircraft['takeoff_timestamp'], aircraft['landing_timestamp']))
                 if aircraft['takeoff_timestamp'] and aircraft['landing_timestamp']:
-                    print("before graph")
-                    print("what the fuck")
-
-                    print(aircraft['takeoff_timestamp'])
                     draw_alt_graph(
                         db_conn.cursor(),
                         aircraft,
                         config['TRACKER']['chart_directory']
                     )
-                print("after graph")
-
-
                 tracked_aircraft.pop(aircraft['address'])
 
-    print('Tracked aircraft =========================')
-    pprint.pprint(tracked_aircraft)
-    print('End Tracked aircraft', len(tracked_aircraft), '======================')
+    log.debug('Tracked aircraft =========================')
+    log.debug(pprint.pformat(tracked_aircraft))
+    log.debug('End Tracked aircraft {} {}'.format(len(tracked_aircraft), '======================'))
     db_conn.close()
 
 
 def process_beacon(raw_message):
-    print("beacon!")
     try:
         beacon = parse(raw_message)
-        # if 'aircraft_type' in beacon.keys():
         try:
             if beacon['beacon_type'] in ['aprs_aircraft', 'flarm']:
-                track_aircraft(beacon, tracked_airfield)
+                log.debug('Aircraft beacon received')
+                if beacon['aircraft_type'] in [1,2]:
+                    track_aircraft(beacon)
+                else:
+                    log.debug("Not a glider or tug")
         except KeyError as e:
-            print(e)
+            log.debug('Beacon type field not found')
+            log.debug(e)
             pass
-            print('beacon_type field not found')
-            # print(beacon)
     except ParseError as e:
-        print('Error, {}'.format(e.message))
+        log.error('Error, {}'.format(e.message))
 
 
-print("Checking database for active flights")
-with make_database_connection() as db_conn:
+log.info('Importing device data')
+import_device_data()
+
+log.info("Checking database for active flights")
+db_conn = make_database_connection()
+if db_conn:
     database_flights = get_currently_airborne_flights(db_conn.cursor())
-
+    db_conn.close()
+else:
+    log.error('Unable to retrieve database flights')
+    database_flights = {}
 
 tracked_aircraft = {}
 
@@ -229,15 +290,16 @@ for flight in database_flights:
     db_flight['tracking_launch_height'] = flight[13]
     db_flight['tracking_launch_start_time'] = flight[14]
     db_flight['launch_height'] = flight[12]
+    db_flight['takeoff_airfield'] = flight[15]
+    db_flight['landing_airfield'] = flight[16]
 
     tracked_aircraft[db_flight['address']] = db_flight
 
-print("=========")
-pprint.pprint(tracked_aircraft)
-print("=========")
+log.info("=========")
+log.info(pprint.pformat(tracked_aircraft))
+log.info("=========")
 
-# if not has_airfield_sun_set(tracked_airfield):
-client = AprsClient(aprs_user='N0CALL', aprs_filter="r/{latitude}/{longitude}/{tracking_radius}".format(tracking_radius=config['TRACKER']['tracking_radius'], **tracked_airfield))
+client = AprsClient(aprs_user='N0CALL', aprs_filter="a/59.601095/-11.074219/49.866317/2.724609")
 client.connect()
 try:
     client.run(callback=process_beacon, autoreconnect=True)
