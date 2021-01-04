@@ -1,4 +1,4 @@
-class Aircraft:
+class Flight:
     def __init__(self, airfield_name, address, address_type, altitude, ground_speed, receiver_name, reference_timestamp, registration):
         self.airfield = airfield_name
         self.address = address

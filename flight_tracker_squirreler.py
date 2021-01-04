@@ -98,9 +98,14 @@ def add_flight(cursor, aircraft_data):
         takeoff_airfield,
         landing_timestamp,
         landing_airfield,
-        status
+        status,
+        launch_height,
+        launch_type,
+        average_launch_climb_rate,
+        max_launch_climb_rate,
+        launch_complete
     )
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);"""
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);"""
 
     insert_row_data = (
         aircraft_data['airfield'],
@@ -115,7 +120,12 @@ def add_flight(cursor, aircraft_data):
         aircraft_data['takeoff_airfield'],
         aircraft_data['landing_timestamp'],
         aircraft_data['landing_airfield'],
-        aircraft_data['status']
+        aircraft_data['status'],
+        aircraft_data['launch_height'],
+        aircraft_data['launch_type'],
+        aircraft_data['average_launch_climb_rate'],
+        aircraft_data['max_launch_climb_rate'],
+        aircraft_data['launch_complete']
     )
 
     cursor.execute(insert_row_sql, insert_row_data)
@@ -225,7 +235,11 @@ def update_flight(cursor, aircraft_data):
         landing_timestamp = %s,
         landing_airfield = %s,
         status = %s,
-        launch_height = %s
+        launch_height = %s,
+        launch_type = %s,
+        average_launch_climb_rate = %s,
+        max_launch_climb_rate = %s,
+        launch_complete = %s
     WHERE address = %s AND takeoff_timestamp = %s;"""
 
     update_row_data = (
@@ -243,8 +257,13 @@ def update_flight(cursor, aircraft_data):
         aircraft_data['landing_airfield'],
         aircraft_data['status'],
         aircraft_data['launch_height'],
+        aircraft_data['launch_type'],
+        aircraft_data['average_launch_climb_rate'],
+        aircraft_data['max_launch_climb_rate'],
+        aircraft_data['launch_complete'],
         aircraft_data['address'],
         aircraft_data['takeoff_timestamp']
+
     )
 
     cursor.execute(insert_row_sql, update_row_data)

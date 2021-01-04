@@ -21,7 +21,7 @@ from geopy import distance as measure_distance
 
 from scipy.spatial import kdtree
 
-from aircraft import Aircraft
+from flight import Flight
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -163,7 +163,7 @@ def track_aircraft(beacon, save_beacon=True):
     airfield_name = airfield['name'].lower()
     if beacon['address'] not in tracked_aircraft.keys():
         log.debug('Aircraft {} not tracked yet'.format(beacon['address']))
-        new_aircraft = Aircraft(airfield_name,
+        new_aircraft = Flight(airfield_name,
                                 beacon['address'],
                                 beacon['address_type'],
                                 beacon['altitude'],
@@ -293,10 +293,7 @@ def track_aircraft(beacon, save_beacon=True):
                                 try:
 
                                     recent_average = mean(aircraft.launch_climb_rates[-15:])
-
-
                                     recent_average_diff = recent_average - aircraft.average_launch_climb_rate
-
 
                                     if recent_average_diff < -1.5 or recent_average_diff > 1.5:
                                         sl = None
@@ -317,6 +314,8 @@ def track_aircraft(beacon, save_beacon=True):
                                             recent_average_diff,
                                             sl
                                         ))
+                                        update_flight(db_conn.cursor(), aircraft.to_dict())
+                                        db_conn.commit()
                                 except StatisticsError:
                                     log.info("No data to average, skipping")
 
@@ -374,7 +373,7 @@ def process_beacon(raw_message):
         try:
             if beacon['beacon_type'] in ['aprs_aircraft', 'flarm']:
                 log.debug('Aircraft beacon received')
-                if beacon['aircraft_type'] in [1,2]:
+                if beacon['aircraft_type'] in [1, 2]:
                     track_aircraft(beacon)
                 else:
                     log.debug("Not a glider or tug")
@@ -401,7 +400,7 @@ else:
 
 
 for flight in database_flights:
-    db_flight = Aircraft(flight[1], flight[2], flight[3], flight[4], flight[5], flight[6], flight[7], flight[8])
+    db_flight = Flight(flight[1], flight[2], flight[3], flight[4], flight[5], flight[6], flight[7], flight[8])
     db_flight.takeoff_timestamp = flight[9]
     db_flight.landing_timestamp = flight[10]
     db_flight.status = flight[11]
@@ -428,10 +427,9 @@ log.info("=========")
 #     print('\nStop ogn gateway')
 #     client.disconnect()
 
-from flight_tracker_squirreler import get_raw_beacons_for_address_between
-
 db_conn = make_database_connection()
-beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-24 07:00:00', '2020-12-24 18:00:00')
+beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-31 09:00:00', '2020-12-31 18:00:00')
+# beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-24 09:00:00', '2020-12-24 18:00:00')
 # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD51CC', '2020-12-22 15:27:19', '2020-12-22 15:33:15')
 # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD5133', '2020-12-22 15:44:33', '2020-12-22 16:08:56')
 # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), '405612', '2020-12-22 15:35:59', '2020-12-22 15:52:17')
