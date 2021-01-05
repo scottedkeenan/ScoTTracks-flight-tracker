@@ -11,7 +11,7 @@ import mysql.connector
 from ogn.client import AprsClient
 from ogn.parser import parse, ParseError
 
-from flight_tracker_squirreler import add_flight, update_flight, get_currently_airborne_flights, add_beacon, get_beacons_for_address_between, get_raw_beacons_between, get_airfields
+from flight_tracker_squirreler import add_flight, update_flight, get_currently_airborne_flights, add_beacon, get_beacons_for_address_between, get_raw_beacons_between, get_airfields, get_filters_by_country_codes, get_active_airfields_for_countries
 
 from charts import draw_alt_graph
 
@@ -27,9 +27,6 @@ from statistics import mean, StatisticsError
 
 config = configparser.ConfigParser()
 config.read('config.ini')
-
-tracked_airfield_name = config['TRACKER']['tracked_airfield']
-tracked_airfield = json.loads(config['AIRFIELDS'][tracked_airfield_name])
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 log = logging.getLogger(__name__)
@@ -57,7 +54,7 @@ def make_database_connection(retry_counter=0):
 db_conn = make_database_connection()
 
 AIRFIELD_DATA = {}
-for airfield in get_airfields(db_conn.cursor()):
+for airfield in get_active_airfields_for_countries(db_conn.cursor(), config['TRACKER']['track_countries'].split(',')):
     airfield_json = {
         'id': airfield[0],
         'name': airfield[1],
@@ -69,6 +66,7 @@ for airfield in get_airfields(db_conn.cursor()):
     AIRFIELD_DATA[(airfield_json['latitude'], airfield_json['longitude'])] = airfield_json
 
 AIRFIELD_LOCATIONS = [x for x in AIRFIELD_DATA.keys()]
+log.debug('Airfields loaded: {}'.format(pprint.pformat(AIRFIELD_LOCATIONS)))
 AIRFIELD_TREE = kdtree.KDTree(AIRFIELD_LOCATIONS)
 
 db_conn.close()
@@ -352,7 +350,14 @@ log.info("=========")
 
 # LIVE get beacons
 
-client = AprsClient(aprs_user='N0CALL', aprs_filter="r/{latitude}/{longitude}/{tracking_radius}".format(tracking_radius=config['TRACKER']['tracking_radius'], **tracked_airfield))
+track_countries = config['TRACKER']['track_countries'].split(',')
+db_conn = make_database_connection()
+filters = get_filters_by_country_codes(db_conn.cursor(), track_countries)
+db_conn.close()
+aprs_filter = ' '.join(filters)
+
+client = AprsClient(aprs_user='N0CALL', aprs_filter=aprs_filter)
+
 client.connect()
 try:
     client.run(callback=process_beacon, autoreconnect=True)

@@ -354,3 +354,32 @@ def get_airfields(cursor):
     """
     cursor.execute(get_airfields_sql)
     return cursor.fetchall()
+
+
+def get_active_airfields_for_countries(cursor, country_codes):
+    placeholder = '%s'
+    placeholders = ', '.join(placeholder for unused in country_codes)
+
+    get_airfields_sql = """
+    SELECT *
+    FROM `airfields`
+    WHERE is_active = TRUE
+    AND country_code IN (%s);
+    """ % placeholders
+
+    cursor.execute(get_airfields_sql, country_codes)
+    return cursor.fetchall()
+
+
+def get_filters_by_country_codes(cursor, country_codes):
+    placeholder = '%s'
+    placeholders = ', '.join(placeholder for unused in country_codes)
+
+    get_filters_sql = """
+    SELECT aprs_filter
+    FROM `countries`
+    WHERE country_code IN (%s);
+    """ % placeholders
+
+    cursor.execute(get_filters_sql, country_codes)
+    return [i[0] for i in cursor.fetchall()]
