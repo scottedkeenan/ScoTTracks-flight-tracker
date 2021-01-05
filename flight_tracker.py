@@ -11,7 +11,7 @@ import mysql.connector
 from ogn.client import AprsClient
 from ogn.parser import parse, ParseError
 
-from flight_tracker_squirreler import add_flight, update_flight, get_currently_airborne_flights, add_beacon, get_beacons_for_address_between, get_raw_beacons_between
+from flight_tracker_squirreler import add_flight, update_flight, get_currently_airborne_flights, add_beacon, get_beacons_for_address_between, get_raw_beacons_between, get_airfields
 
 from charts import draw_alt_graph
 
@@ -23,6 +23,8 @@ from scipy.spatial import kdtree
 
 from flight import Flight
 
+from statistics import mean, StatisticsError
+
 config = configparser.ConfigParser()
 config.read('config.ini')
 
@@ -33,38 +35,6 @@ logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 log = logging.getLogger(__name__)
 
 tracked_aircraft = {}
-
-#debug
-# counted_launches = 0
-# average_launch_speed = 0
-
-#
-# AIRCRAFT_DATA_TEMPLATE = {
-#     'airfield': None,
-#     'address': None,
-#     'address_type': None,
-#     'altitude': None,
-#     'ground_speed': None,
-#     'receiver_name': None,
-#     'reference_timestamp': None,
-#     'registration': None,
-#     'takeoff_timestamp': None,
-#     'takeoff_airfield': None,
-#     'landing_timestamp': None,
-#     'landing_airfield': None,
-#     'status': None,
-#     'launch_type': None,
-#     'max_launch_climb_rate': 0,
-#     'launch_climb_rates': []
-# }
-
-AIRFIELD_DATA = {}
-for airfield in config['AIRFIELDS']:
-    airfield_json = json.loads(config['AIRFIELDS'][airfield])
-    AIRFIELD_DATA[(float(airfield_json['latitude']), float(airfield_json['longitude']))] = airfield_json
-
-AIRFIELD_LOCATIONS = [x for x in AIRFIELD_DATA.keys()]
-AIRFIELD_TREE = kdtree.KDTree(AIRFIELD_LOCATIONS)
 
 
 def make_database_connection(retry_counter=0):
@@ -82,6 +52,27 @@ def make_database_connection(retry_counter=0):
         log.error(err)
         retry_counter += 1
         return make_database_connection(retry_counter)
+
+
+db_conn = make_database_connection()
+
+AIRFIELD_DATA = {}
+for airfield in get_airfields(db_conn.cursor()):
+    airfield_json = {
+        'id': airfield[0],
+        'name': airfield[1],
+        'nice_name': airfield[2],
+        'latitude': airfield[3],
+        'longitude': airfield[4],
+        'elevation': airfield[5]
+    }
+    AIRFIELD_DATA[(airfield_json['latitude'], airfield_json['longitude'])] = airfield_json
+
+AIRFIELD_LOCATIONS = [x for x in AIRFIELD_DATA.keys()]
+AIRFIELD_TREE = kdtree.KDTree(AIRFIELD_LOCATIONS)
+
+db_conn.close()
+
 
 def import_device_data():
     device_data = requests.get(config['TRACKER']['device_data_url']).text
@@ -123,10 +114,6 @@ def detect_airfield(beacon):
         return closest_airfield, False
 
 
-def get_airfield(airfield_name):
-    return json.loads(config['AIRFIELDS'][airfield_name])
-
-
 def track_aircraft(beacon, save_beacon=True):
 
     log.debug("track aircraft!")
@@ -163,24 +150,15 @@ def track_aircraft(beacon, save_beacon=True):
     airfield_name = airfield['name'].lower()
     if beacon['address'] not in tracked_aircraft.keys():
         log.debug('Aircraft {} not tracked yet'.format(beacon['address']))
-        new_aircraft = Flight(airfield_name,
-                                beacon['address'],
-                                beacon['address_type'],
-                                beacon['altitude'],
-                                beacon['ground_speed'],
-                                beacon['receiver_name'],
-                                beacon['reference_timestamp'],
-                                registration)
-
-        # new_aircraft['airfield'] = airfield_name
-        # new_aircraft['address'] = beacon['address']
-        # new_aircraft['address_type'] = beacon['address_type']
-        # new_aircraft['altitude'] = beacon['altitude']
-        # new_aircraft['ground_speed'] = beacon['ground_speed']
-        # new_aircraft['receiver_name'] = beacon['receiver_name']
-        # new_aircraft['reference_timestamp'] = beacon['reference_timestamp']  # .strftime("%m/%d/%Y, %H:%M:%S")
-        # new_aircraft['registration'] = registration + '_TEST'
-
+        new_aircraft = Flight(
+            airfield_name,
+            beacon['address'],
+            beacon['aircraft_type'],
+            beacon['altitude'],
+            beacon['ground_speed'],
+            beacon['receiver_name'],
+            beacon['reference_timestamp'],
+            registration)
 
         if beacon['ground_speed'] > 20 and beacon['altitude'] - airfield['elevation'] > 200:
             new_aircraft.status = 'air'
@@ -198,10 +176,6 @@ def track_aircraft(beacon, save_beacon=True):
 
             if aircraft.status == 'ground' and at_airfield:
 
-                #debug
-                # global counted_launches
-                # counted_launches += 1
-
                 # Aircraft launch detected
                 logging.info('Before launch' + '='*10)
                 logging.info(pprint.pformat(aircraft.to_dict()))
@@ -216,42 +190,9 @@ def track_aircraft(beacon, save_beacon=True):
                 log.info("Adding aircraft {} as launched at {}".format(registration, airfield_name))
                 add_flight(db_conn.cursor(), aircraft.to_dict())
             else:
-                # todo detailed launch height calculation
-                # - detect aero/winch
+
                 # todo remove unsued aircraft object fields eg 'tracking_launch_height'
 
-                # {'address': 'DDE6A5',
-                #  'address_type': 2,
-                #  'aircraft_type': 1,
-                #  'altitude': 276.1488,
-                #  'aprs_type': 'position',
-                #  'beacon_type': 'flarm',
-                #  'climb_rate': 15.79372,
-                #  'comment': 'id06DDE6A5 +3109fpm -0.2rot 15.5dB +2.1kHz gps1x1',
-                #  'dstcall': 'OGFLR',
-                #  'error_count': None,
-                #  'frequency_offset': 2.1,
-                #  'gps_quality': {'horizontal': 1, 'vertical': 1},
-                #  'ground_speed': 51.85110519115846,
-                #  'hardware_version': None,
-                #  'latitude': 53.021166666666666,
-                #  'longitude': -0.9168000000000001,
-                #  'name': 'FLRDDE6A5',
-                #  'raw_message': "FLRDDE6A5>OGFLR,qAS,EGBN:/114734h5301.27N/00055.00W'067/028/A=000906 "
-                #                 '!W08! id06DDE6A5 +3109fpm -0.2rot 15.5dB +2.1kHz gps1x1',
-                #  'real_address': None,
-                #  'receiver_name': 'EGBN',
-                #  'reference_timestamp': datetime.datetime(2021, 1, 4, 11, 47, 38, 963901),
-                #  'relay': None,
-                #  'signal_power': None,
-                #  'signal_quality': 15.5,
-                #  'software_version': None,
-                #  'stealth': False,
-                #  'symbolcode': "'",
-                #  'symboltable': '/',
-                #  'timestamp': datetime.datetime(2021, 1, 4, 11, 47, 34),
-                #  'track': 67,
-                #  'turn_rate': -0.6000000000000001}
                 if aircraft.takeoff_timestamp and not aircraft.launch_complete:
                     time_since_launch = (beacon['timestamp'] - aircraft.takeoff_timestamp).total_seconds()
                     log.debug("time since launch: {}".format(time_since_launch))
@@ -268,12 +209,6 @@ def track_aircraft(beacon, save_beacon=True):
                         launch_tracking_time = winch_tracking_time
 
                     if time_since_launch <= launch_tracking_time:
-                        #debug
-                        # global average_launch_speed
-                        # average_launch_speed = average_launch_speed +
-
-                        from statistics import mean, StatisticsError
-
                         log.debug("Updating aircraft {} launch height".format(aircraft.registration))
                         log.debug("{} launch height is: {}".format(aircraft.registration, aircraft.launch_height))
                         log.debug("{} launch vertical speed is {}".format(aircraft.registration, beacon['climb_rate']))
@@ -318,7 +253,6 @@ def track_aircraft(beacon, save_beacon=True):
                                         db_conn.commit()
                                 except StatisticsError:
                                     log.info("No data to average, skipping")
-
 
                             aircraft.add_launch_climb_rate_point(beacon['climb_rate'])
                             aircraft.average_launch_climb_rate = mean(aircraft.launch_climb_rates)
@@ -397,8 +331,6 @@ else:
     log.error('Unable to retrieve database flights')
     database_flights = {}
 
-
-
 for flight in database_flights:
     db_flight = Flight(flight[1], flight[2], flight[3], flight[4], flight[5], flight[6], flight[7], flight[8])
     db_flight.takeoff_timestamp = flight[9]
@@ -428,7 +360,7 @@ log.info("=========")
 #     client.disconnect()
 
 db_conn = make_database_connection()
-beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-31 09:00:00', '2020-12-31 18:00:00')
+beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-31 10:00:00', '2020-12-31 18:00:00')
 # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-24 09:00:00', '2020-12-24 18:00:00')
 # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD51CC', '2020-12-22 15:27:19', '2020-12-22 15:33:15')
 # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD5133', '2020-12-22 15:44:33', '2020-12-22 16:08:56')

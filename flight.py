@@ -1,8 +1,8 @@
 class Flight:
-    def __init__(self, airfield_name, address, address_type, altitude, ground_speed, receiver_name, reference_timestamp, registration):
+    def __init__(self, airfield_name, address, aircraft_type, altitude, ground_speed, receiver_name, reference_timestamp, registration):
         self.airfield = airfield_name
         self.address = address
-        self.address_type = address_type
+        self.aircraft_type = aircraft_type
         self.altitude = altitude
         self.ground_speed = ground_speed
         self.receiver_name = receiver_name
@@ -25,7 +25,7 @@ class Flight:
         return {
             'airfield': self.airfield,
             'address': self.address,
-            'address_type': self.address_type,
+            'aircraft_type': self.aircraft_type,
             'altitude': self.altitude,
             'ground_speed': self.ground_speed,
             'receiver_name': self.receiver_name,

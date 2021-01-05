@@ -14,3 +14,5 @@ ADD COLUMN launch_type VARCHAR(255) DEFAULT NULL,
 ADD COLUMN average_launch_climb_rate FLOAT DEFAULT 0,
 ADD COLUMN max_launch_climb_rate FLOAT DEFAULT 0,
 ADD COLUMN launch_complete BOOLEAN DEFAULT FALSE
+
+CHANGE `address_type` `aircraft_type` TINYINT NULL DEFAULT NULL;

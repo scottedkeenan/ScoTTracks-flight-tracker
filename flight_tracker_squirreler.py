@@ -12,7 +12,7 @@ def create_daily_flights_table(cursor):
         `id` INT PRIMARY KEY AUTO_INCREMENT,
         `airfield` varchar(255) DEFAULT NULL,
         `address` varchar(255) DEFAULT NULL,
-        `address_type` int(11) DEFAULT NULL,
+        `aircraft_type` int(11) DEFAULT NULL,
         `altitude` float DEFAULT NULL,
         `ground_speed` float DEFAULT NULL,
         `receiver_name` varchar(255) DEFAULT NULL,
@@ -88,7 +88,7 @@ def add_flight(cursor, aircraft_data):
     INSERT INTO daily_flights (
         airfield, 
         address,
-        address_type,
+        aircraft_type,
         altitude,
         ground_speed,
         receiver_name,
@@ -110,7 +110,7 @@ def add_flight(cursor, aircraft_data):
     insert_row_data = (
         aircraft_data['airfield'],
         aircraft_data['address'],
-        aircraft_data['address_type'],
+        aircraft_data['aircraft_type'],
         aircraft_data['altitude'],
         aircraft_data['ground_speed'],
         aircraft_data['receiver_name'],
@@ -224,7 +224,7 @@ def update_flight(cursor, aircraft_data):
     UPDATE daily_flights SET
         airfield = %s, 
         address = %s,
-        address_type = %s,
+        aircraft_type = %s,
         altitude = %s,
         ground_speed = %s,
         receiver_name = %s,
@@ -245,7 +245,7 @@ def update_flight(cursor, aircraft_data):
     update_row_data = (
         aircraft_data['airfield'],
         aircraft_data['address'],
-        aircraft_data['address_type'],
+        aircraft_data['aircraft_type'],
         aircraft_data['altitude'],
         aircraft_data['ground_speed'],
         aircraft_data['receiver_name'],
@@ -345,3 +345,12 @@ def get_raw_beacons_between(cursor, start_datetime, end_datetime):
     cursor.execute(get_beacons_sql, get_beacons_data)
     return cursor.fetchall()
     # BETWEEN '2020-12-01 15:02:55' AND '2020-12-01 15:09:55'
+
+
+def get_airfields(cursor):
+    get_airfields_sql = """
+    SELECT *
+    FROM `airfields`
+    """
+    cursor.execute(get_airfields_sql)
+    return cursor.fetchall()
