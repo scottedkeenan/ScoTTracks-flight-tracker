@@ -2,18 +2,19 @@ import requests
 import json
 import pprint
 import xml.etree.ElementTree as ET
+from slugify import slugify
 
 
 # data from: http://gliding.co.nz/clubs/map/
 
-tree = ET.parse('doc.kml')
+tree = ET.parse('./datasources/nz.kml')
 root = tree.getroot()
 
 airfield_json = []
 
 for child in root.iter('Placemark'):
     club_name = child.find('name').text.strip()
-    club_key = club_name.upper().replace(' ', '_')
+    club_key = slugify(club_name, only_ascii=True)
     coords = child.find('Point').find('coordinates').text.strip().split(',')
     airfield_json.append({
             'key': club_key,
@@ -52,7 +53,7 @@ pprint.pprint(json_results)
 with open('./raw_elevation_data.json', 'w') as raw_elevation:
     raw_elevation.write(json.dumps(json_results))
 
-sql_lines = ["INSERT INTO `airfields` (`name`, `nice_name`, `latitude`, `longitude`, `elevation`, `country`, `is_active`) VALUES "]
+sql_lines = ["INSERT INTO `airfields` (`name`, `nice_name`, `latitude`, `longitude`, `elevation`, `country_code`, `is_active`) VALUES "]
 
 print(sql_lines)
 with open('./raw_elevation_data.json', 'r') as raw_elevation:
@@ -90,6 +91,6 @@ sql_lines.append(';')
 
 print(len(airfield_json), ' clubs')
 
-with open('./nz_club_data.sql', 'a') as club_data_file:
+with open('./nz_club_data.sql', 'w') as club_data_file:
     club_data_file.writelines(sql_lines)
 
