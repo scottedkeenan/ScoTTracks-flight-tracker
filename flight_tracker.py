@@ -137,13 +137,13 @@ def track_aircraft(beacon, save_beacon=True):
     except KeyError:
         registration = 'UNKNOWN'
 
-    # if beacon['address'] in tracked_aircraft.keys():
-    #     # Remove outdated tracking
-    #     if datetime.date(tracked_aircraft[beacon['address']]['reference_timestamp']) < datetime.today().date():
-    #         tracked_aircraft.pop(beacon['address'])
-    #         log.debug("Removed outdated tracking for: {}".format(beacon['address']))
-    #     else:
-    #         log.debug('Tracking checked and is up to date')
+    if beacon['address'] in tracked_aircraft.keys():
+        # Remove outdated tracking
+        if datetime.date(tracked_aircraft[beacon['address']].reference_timestamp) < datetime.today().date():
+            tracked_aircraft.pop(beacon['address'])
+            log.debug("Removed outdated tracking for: {}".format(beacon['address']))
+        else:
+            log.debug('Tracking checked and is up to date')
 
     airfield, at_airfield = detect_airfield(beacon)
     # todo: correct debug
@@ -350,26 +350,33 @@ for aircraft in tracked_aircraft:
     log.info(pprint.pformat(tracked_aircraft[aircraft].to_dict()))
 log.info("=========")
 
+# LIVE get beacons
 
-# client = AprsClient(aprs_user='N0CALL', aprs_filter="r/{latitude}/{longitude}/{tracking_radius}".format(tracking_radius=config['TRACKER']['tracking_radius'], **tracked_airfield))
-# client.connect()
-# try:
-#     client.run(callback=process_beacon, autoreconnect=True)
-# except KeyboardInterrupt:
-#     print('\nStop ogn gateway')
-#     client.disconnect()
-
-db_conn = make_database_connection()
-beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-31 10:00:00', '2020-12-31 18:00:00')
-# beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-24 09:00:00', '2020-12-24 18:00:00')
-# beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD51CC', '2020-12-22 15:27:19', '2020-12-22 15:33:15')
-# beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD5133', '2020-12-22 15:44:33', '2020-12-22 16:08:56')
-# beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), '405612', '2020-12-22 15:35:59', '2020-12-22 15:52:17')
+client = AprsClient(aprs_user='N0CALL', aprs_filter="r/{latitude}/{longitude}/{tracking_radius}".format(tracking_radius=config['TRACKER']['tracking_radius'], **tracked_airfield))
+client.connect()
+try:
+    client.run(callback=process_beacon, autoreconnect=True)
+except KeyboardInterrupt:
+    print('\nStop ogn gateway')
+    client.disconnect()
 
 
-print(len(beacons))
+# Debug Get beacons from DB
 
-for beacon in beacons:
-    # log.warning(beacon)
-    beacon['address'] = beacon['address']
-    track_aircraft(beacon, save_beacon=False)
+# need to also prevent checking data is up to date
+# comment out the live import above
+
+# db_conn = make_database_connection()
+# beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-31 10:00:00', '2020-12-31 18:00:00')
+# # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-24 09:00:00', '2020-12-24 18:00:00')
+# # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD51CC', '2020-12-22 15:27:19', '2020-12-22 15:33:15')
+# # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD5133', '2020-12-22 15:44:33', '2020-12-22 16:08:56')
+# # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), '405612', '2020-12-22 15:35:59', '2020-12-22 15:52:17')
+#
+#
+# print(len(beacons))
+#
+# for beacon in beacons:
+#     # log.warning(beacon)
+#     beacon['address'] = beacon['address']
+#     track_aircraft(beacon, save_beacon=False)
