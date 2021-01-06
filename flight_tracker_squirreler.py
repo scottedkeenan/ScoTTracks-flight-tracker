@@ -103,18 +103,19 @@ def add_flight(cursor, aircraft_data):
         launch_type,
         average_launch_climb_rate,
         max_launch_climb_rate,
-        launch_complete
+        launch_complete,
+        tug_registration
     )
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);"""
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);"""
 
     insert_row_data = (
-        aircraft_data['airfield'],
+        aircraft_data['nearest_airfield']['name'],
         aircraft_data['address'],
         aircraft_data['aircraft_type'],
         aircraft_data['altitude'],
         aircraft_data['ground_speed'],
         aircraft_data['receiver_name'],
-        aircraft_data['reference_timestamp'],
+        aircraft_data['timestamp'],
         aircraft_data['registration'],
         aircraft_data['takeoff_timestamp'],
         aircraft_data['takeoff_airfield'],
@@ -125,7 +126,8 @@ def add_flight(cursor, aircraft_data):
         aircraft_data['launch_type'],
         aircraft_data['average_launch_climb_rate'],
         aircraft_data['max_launch_climb_rate'],
-        aircraft_data['launch_complete']
+        aircraft_data['launch_complete'],
+        aircraft_data['tug']
     )
 
     cursor.execute(insert_row_sql, insert_row_data)
@@ -239,17 +241,18 @@ def update_flight(cursor, aircraft_data):
         launch_type = %s,
         average_launch_climb_rate = %s,
         max_launch_climb_rate = %s,
-        launch_complete = %s
+        launch_complete = %s,
+        tug_registration = %s
     WHERE address = %s AND takeoff_timestamp = %s;"""
 
     update_row_data = (
-        aircraft_data['airfield'],
+        aircraft_data['nearest_airfield']['name'],
         aircraft_data['address'],
         aircraft_data['aircraft_type'],
         aircraft_data['altitude'],
         aircraft_data['ground_speed'],
         aircraft_data['receiver_name'],
-        aircraft_data['reference_timestamp'],
+        aircraft_data['timestamp'],
         aircraft_data['registration'],
         aircraft_data['takeoff_timestamp'],
         aircraft_data['takeoff_airfield'],
@@ -261,9 +264,10 @@ def update_flight(cursor, aircraft_data):
         aircraft_data['average_launch_climb_rate'],
         aircraft_data['max_launch_climb_rate'],
         aircraft_data['launch_complete'],
+        aircraft_data['tug'],
+
         aircraft_data['address'],
         aircraft_data['takeoff_timestamp']
-
     )
 
     cursor.execute(insert_row_sql, update_row_data)

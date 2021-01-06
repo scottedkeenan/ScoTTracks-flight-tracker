@@ -90,26 +90,47 @@ def import_device_data():
     return device_dict
 
 
-def detect_airfield(beacon):
+def detect_airfield(beacon, flight):
     """
     :param beacon:
     :param type:
     :return:
     """
-    # todo: We need a database table for airfields rather than config
     detection_radius = float(config['TRACKER']['airfield_detection_radius'])
 
+    # If flight is still near the same airfield, do nothing
+    if flight.nearest_airfield and flight.distance_to_nearest_airfield:
+        current_distance_to_airfield = measure_distance.distance(
+            [float(flight.nearest_airfield['latitude']), float(flight.nearest_airfield['longitude'])],
+            (beacon['latitude'], beacon['longitude']))
+        if current_distance_to_airfield <= detection_radius:
+            flight.distance_to_nearest_airfield = current_distance_to_airfield
+            return
+
+    # If not, detect the nearest airfield and update the flight
     _, closest_airfield_index = AIRFIELD_TREE.query((float(beacon['latitude']), float(beacon['longitude'])), 1)
     closest_airfield = AIRFIELD_DATA[AIRFIELD_LOCATIONS[closest_airfield_index]]
     distance_to_nearest = measure_distance.distance(
         [float(closest_airfield['latitude']), float(closest_airfield['longitude'])],
         (beacon['latitude'], beacon['longitude'])).km
     log.debug(("nearest is: {} at {}".format(closest_airfield['name'], distance_to_nearest)))
+    flight.nearest_airfield = closest_airfield
+    flight.distance_to_nearest_airfield = distance_to_nearest
 
-    if distance_to_nearest < detection_radius:
-        return closest_airfield, True
-    else:
-        return closest_airfield, False
+
+def detect_tug(tracked_aircraft, flight):
+    for address in tracked_aircraft:
+        if address == flight.address:
+            continue
+        other_flight = tracked_aircraft[address]
+        if other_flight.takeoff_timestamp:
+            time_difference = (other_flight.takeoff_timestamp - flight.takeoff_timestamp).total_seconds()
+            if -10 < time_difference < 10:
+                log.info("FLARM tug found: {} is tugging {}".format(other_flight.registration, flight.registration))
+                flight.launch_type = 'aerotow'
+                flight.tug = other_flight.registration
+                other_flight.launch_type = 'tug'
+                return True
 
 
 def track_aircraft(beacon, save_beacon=True):
@@ -143,154 +164,140 @@ def track_aircraft(beacon, save_beacon=True):
         else:
             log.debug('Tracking checked and is up to date')
 
-    airfield, at_airfield = detect_airfield(beacon)
-    # todo: correct debug
-    airfield_name = airfield['name'].lower()
     if beacon['address'] not in tracked_aircraft.keys():
         log.debug('Aircraft {} not tracked yet'.format(beacon['address']))
-        new_aircraft = Flight(
-            airfield_name,
+        new_flight = Flight(
+            None,
             beacon['address'],
             beacon['aircraft_type'],
             beacon['altitude'],
             beacon['ground_speed'],
             beacon['receiver_name'],
             beacon['reference_timestamp'],
-            registration)
+            registration
+        )
+        detect_airfield(beacon, new_flight)
 
-        if beacon['ground_speed'] > 20 and beacon['altitude'] - airfield['elevation'] > 200:
-            new_aircraft.status = 'air'
+        if beacon['ground_speed'] > 20 and beacon['altitude'] - new_flight.nearest_airfield['elevation'] > 200:
+            new_flight.status = 'air'
         else:
-            new_aircraft.status = 'ground'
+            new_flight.status = 'ground'
         log.debug("Starting to track aircraft ".format(registration))
-        tracked_aircraft[beacon['address']] = new_aircraft
+        tracked_aircraft[beacon['address']] = new_flight
     else:
         log.debug('Updating tracked aircraft')
-        aircraft = tracked_aircraft[beacon['address']]
-        aircraft.airfield = airfield_name
+        flight = tracked_aircraft[beacon['address']]
 
-        if beacon['ground_speed'] >= 30 and beacon['altitude'] - airfield['elevation'] > 15:
+        # update fields of flight
+        detect_airfield(beacon, flight) # updates airfield and distance to airfield
+        flight.update(beacon)
+
+        if beacon['ground_speed'] >= 30 and flight.agl() > 15:
             log.debug("airborne aircraft detected")
 
-            if aircraft.status == 'ground' and at_airfield:
-
+            if flight.status == 'ground' and flight.distance_to_nearest_airfield < float(config['TRACKER']['airfield_detection_radius']):
                 # Aircraft launch detected
-                logging.info('Before launch' + '='*10)
-                logging.info(pprint.pformat(aircraft.to_dict()))
-                logging.info('Before launch' + '='*10)
-                aircraft.status = 'air'
-                aircraft.takeoff_timestamp = beacon['timestamp']  # .strftime("%m/%d/%Y, %H:%M:%S")
-                aircraft.takeoff_airfield = airfield_name
-                aircraft.launch_height = beacon['altitude'] - airfield['elevation']
-                logging.info('After launch' + '='*10)
-                logging.info(pprint.pformat(aircraft.to_dict()))
-                logging.info('After launch' + '='*10)
-                log.info("Adding aircraft {} as launched at {}".format(registration, airfield_name))
-                add_flight(db_conn.cursor(), aircraft.to_dict())
+                flight.launch()
+                log.info("Adding aircraft {} as launched at {}".format(flight.registration, flight.nearest_airfield['name']))
+                add_flight(db_conn.cursor(), flight.to_dict())
             else:
 
-                # todo remove unsued aircraft object fields eg 'tracking_launch_height'
+                # todo remove unsued flight object fields eg 'tracking_launch_height'
 
-                if aircraft.takeoff_timestamp and not aircraft.launch_complete:
-                    time_since_launch = (beacon['timestamp'] - aircraft.takeoff_timestamp).total_seconds()
+                if flight.takeoff_timestamp and not flight.launch_complete:
+
+                    time_since_launch = flight.seconds_since_launch()
                     log.debug("time since launch: {}".format(time_since_launch))
 
                     # todo config
 
-                    winch_tracking_time = 100
-                    aerotow_self_tracking_time = 900
+                    max_tracking_time = 1000
 
-                    if aircraft.launch_type == 'aerotow':
-                        launch_tracking_time = aerotow_self_tracking_time
-                    else:
-                        # Assume winch until proven otherwise
-                        launch_tracking_time = winch_tracking_time
+                    if time_since_launch <= max_tracking_time:
+                        log.debug("Updating aircraft {} launch height".format(flight.registration))
+                        log.debug("{} launch height is: {}".format(flight.registration, flight.launch_height))
+                        log.debug("{} launch vertical speed is {}".format(flight.registration, beacon['climb_rate']))
+                        log.debug("{} launch type is {}".format(flight.registration, flight.launch_type))
 
-                    if time_since_launch <= launch_tracking_time:
-                        log.debug("Updating aircraft {} launch height".format(aircraft.registration))
-                        log.debug("{} launch height is: {}".format(aircraft.registration, aircraft.launch_height))
-                        log.debug("{} launch vertical speed is {}".format(aircraft.registration, beacon['climb_rate']))
-                        log.debug("{} launch type is {}".format(aircraft.registration, aircraft.launch_type))
+                        if beacon['climb_rate'] > flight.max_launch_climb_rate:
+                            flight.max_launch_climb_rate = beacon['climb_rate']
 
-                        if beacon['climb_rate'] > aircraft.max_launch_climb_rate:
-                            aircraft.max_launch_climb_rate = beacon['climb_rate']
+                        if flight.agl() > 100:
+                            flight.add_launch_climb_rate_point(beacon['climb_rate'])
+                            flight.average_launch_climb_rate = mean(flight.launch_climb_rates)
 
-                        if time_since_launch > 5:
-                            if aircraft.average_launch_climb_rate > 5:
-                                aircraft.launch_type = 'winch'
-                            else:
-                                aircraft.launch_type = 'aerotow'
+                            if len(flight.launch_climb_rates) > 10:
+                                if not flight.launch_type:
+                                    if not detect_tug(tracked_aircraft, flight):
+                                        if flight.max_launch_climb_rate > 7:
+                                            flight.set_launch_type('winch')
+                                        else:
+                                            flight.set_launch_type('aerotow')
+                            try:
+                                recent_average = mean(flight.launch_climb_rates[-15:])
+                                recent_average_diff = recent_average - flight.average_launch_climb_rate
 
-                            if len(aircraft.launch_climb_rates) > 10:
+                                if recent_average_diff < -1.5 or recent_average_diff > 1.5:
+                                    sl = None
+                                    if recent_average_diff < -1.5:
+                                        sl = "sink"
+                                    if recent_average_diff > 1.5:
+                                        sl ="lift"
+                                    flight.launch_complete = True
+                                    log.info(pprint.pformat(flight.launch_climb_rates))
+                                    log.info('{} launch complete at {}! Launch type: {}, Launch height: {}, Launch time: {}, Average vertical: {}, Recent Average Vertical: {}, Difference: {}, Sink/lift: {}'.format(
+                                        flight.registration,
+                                        flight.takeoff_airfield,
+                                        flight.launch_type,
+                                        flight.launch_height * 3.281,
+                                        time_since_launch,
+                                        flight.average_launch_climb_rate,
+                                        recent_average,
+                                        recent_average_diff,
+                                        sl
+                                    ))
+                                    update_flight(db_conn.cursor(), flight.to_dict())
+                                    db_conn.commit()
+                            except StatisticsError:
+                                log.info("No data to average, skipping")
 
-                                try:
-
-                                    recent_average = mean(aircraft.launch_climb_rates[-15:])
-                                    recent_average_diff = recent_average - aircraft.average_launch_climb_rate
-
-                                    if recent_average_diff < -1.5 or recent_average_diff > 1.5:
-                                        sl = None
-                                        if recent_average_diff < -1.5:
-                                            sl = "sink"
-                                        if recent_average_diff > 1.5:
-                                            sl ="lift"
-                                        aircraft.launch_complete = True
-                                        log.info(pprint.pformat(aircraft.launch_climb_rates))
-                                        log.info('{} launch complete at {}! Launch type: {}, Launch height: {}, Launch time: {}, Average vertical: {}, Recent Average Vertical: {}, Difference: {}, Sink/lift: {}'.format(
-                                            aircraft.registration,
-                                            aircraft.takeoff_airfield,
-                                            aircraft.launch_type,
-                                            aircraft.launch_height * 3.281,
-                                            time_since_launch,
-                                            aircraft.average_launch_climb_rate,
-                                            recent_average,
-                                            recent_average_diff,
-                                            sl
-                                        ))
-                                        update_flight(db_conn.cursor(), aircraft.to_dict())
-                                        db_conn.commit()
-                                except StatisticsError:
-                                    log.info("No data to average, skipping")
-
-                            aircraft.add_launch_climb_rate_point(beacon['climb_rate'])
-                            aircraft.average_launch_climb_rate = mean(aircraft.launch_climb_rates)
 
                         try:
                             # Record the maximum launch height
-                            if beacon['altitude'] - airfield['elevation'] > aircraft.launch_height:
-                                aircraft.launch_height = beacon['altitude'] - airfield['elevation']
-                                update_flight(db_conn.cursor(), aircraft.to_dict())
+                            if beacon['altitude'] - flight.nearest_airfield['elevation'] > flight.launch_height:
+                                flight.launch_height = beacon['altitude'] - flight.nearest_airfield['elevation']
+                                update_flight(db_conn.cursor(), flight.to_dict())
                                 db_conn.commit()
                         except TypeError:
                             # Probably a tracker restart error, just set the launch height as current AGL
-                            aircraft.launch_height = beacon['altitude'] - airfield['elevation']
-                            update_flight(db_conn.cursor(), aircraft.to_dict())
+                            flight.launch_height = beacon['altitude'] - flight.nearest_airfield['elevation']
+                            update_flight(db_conn.cursor(), flight.to_dict())
                             db_conn.commit()
 
-        elif beacon['ground_speed'] <= 30 and beacon['altitude'] - airfield['elevation'] <= 15:
+        elif beacon['ground_speed'] <= 30 and beacon['altitude'] - flight.nearest_airfield['elevation'] <= 15:
             log.debug("aircraft detected on ground")
 
-            if aircraft.status == 'air' and at_airfield:
+            if flight.status == 'air' and flight.distance_to_nearest_airfield < float(config['TRACKER']['airfield_detection_radius']):
                 # Aircraft landing detected
-                aircraft.status = 'ground'
-                aircraft.landing_timestamp = beacon['timestamp']  # .strftime("%m/%d/%Y, %H:%M:%S"))
-                aircraft.landing_airfield = airfield_name
+                flight.status = 'ground'
+                flight.landing_timestamp = beacon['timestamp']  # .strftime("%m/%d/%Y, %H:%M:%S"))
+                flight.landing_airfield = flight.nearest_airfield['name']
                 log.info("Updating aircraft {} as landed".format(registration))
 
-                if aircraft.takeoff_timestamp:
-                    update_flight(db_conn.cursor(), aircraft.to_dict())
+                if flight.takeoff_timestamp:
+                    update_flight(db_conn.cursor(), flight.to_dict())
                     db_conn.commit()
                 else:
-                    add_flight(db_conn.cursor(), aircraft.to_dict())
+                    add_flight(db_conn.cursor(), flight.to_dict())
                     db_conn.commit()
-                log.info('Aircraft {} flew from {} to {}'.format(aircraft.registration, aircraft.takeoff_timestamp, aircraft.landing_timestamp))
-                if aircraft.takeoff_timestamp and aircraft.landing_timestamp:
+                log.info('Aircraft {} flew from {} to {}'.format(flight.registration, flight.takeoff_timestamp, flight.landing_timestamp))
+                if flight.takeoff_timestamp and flight.landing_timestamp:
                     draw_alt_graph(
                         db_conn.cursor(),
-                        aircraft,
+                        flight,
                         config['TRACKER']['chart_directory']
                     )
-                tracked_aircraft.pop(aircraft.address)
+                tracked_aircraft.pop(flight.address)
 
     log.debug('Tracked aircraft =========================')
     for flight in tracked_aircraft:
@@ -372,8 +379,8 @@ except KeyboardInterrupt:
 # comment out the live import above
 
 # db_conn = make_database_connection()
+# # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-20 10:00:00', '2020-12-20 18:00:00')
 # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-31 10:00:00', '2020-12-31 18:00:00')
-# # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-24 09:00:00', '2020-12-24 18:00:00')
 # # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD51CC', '2020-12-22 15:27:19', '2020-12-22 15:33:15')
 # # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD5133', '2020-12-22 15:44:33', '2020-12-22 16:08:56')
 # # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), '405612', '2020-12-22 15:35:59', '2020-12-22 15:52:17')
@@ -383,5 +390,6 @@ except KeyboardInterrupt:
 #
 # for beacon in beacons:
 #     # log.warning(beacon)
-#     beacon['address'] = beacon['address']
+#     # beacon['timestamp'] = beacon['timestamp'].replace(year=2021, day=6, month=1)
+#     # beacon['reference_timestamp'] = beacon['reference_timestamp'].replace(year=2021, day=6, month=1)
 #     track_aircraft(beacon, save_beacon=False)
