@@ -158,7 +158,7 @@ def track_aircraft(beacon, save_beacon=True):
 
     if beacon['address'] in tracked_aircraft.keys():
         # Remove outdated tracking
-        if datetime.date(tracked_aircraft[beacon['address']].reference_timestamp) < datetime.today().date():
+        if datetime.date(tracked_aircraft[beacon['address']].timestamp) < datetime.today().date():
             tracked_aircraft.pop(beacon['address'])
             log.debug("Removed outdated tracking for: {}".format(beacon['address']))
         else:
