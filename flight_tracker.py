@@ -31,6 +31,32 @@ config.read('config.ini')
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 log = logging.getLogger(__name__)
 
+
+def import_device_data():
+
+    # todo: import to database?
+    # todo: keep file for reference?
+
+    device_data = requests.get(config['TRACKER']['device_data_url']).text
+
+    device_dict = {}
+
+    for line in device_data.splitlines():
+        if line[0] == '#':
+            continue
+        else:
+            split_line = line.split(',')
+            device_dict[split_line[1].strip("'")] = split_line[3].strip("'")
+
+    with open('ogn-ddb.json', 'w') as ddb_data:
+        ddb_data.write(json.dumps(device_dict))
+
+    return device_dict
+
+
+log.info('Importing device data')
+DEVICE_DICT = import_device_data()
+
 tracked_aircraft = {}
 
 
@@ -70,24 +96,6 @@ log.debug('Airfields loaded: {}'.format(pprint.pformat(AIRFIELD_LOCATIONS)))
 AIRFIELD_TREE = kdtree.KDTree(AIRFIELD_LOCATIONS)
 
 db_conn.close()
-
-
-def import_device_data():
-    device_data = requests.get(config['TRACKER']['device_data_url']).text
-
-    device_dict = {}
-
-    for line in device_data.splitlines():
-        if line[0] == '#':
-            continue
-        else:
-            split_line = line.split(',')
-            device_dict[split_line[1].strip("'")] = split_line[3].strip("'")
-
-    with open('ogn-ddb.json', 'w') as ddb_data:
-        ddb_data.write(json.dumps(device_dict))
-
-    return device_dict
 
 
 def detect_airfield(beacon, flight):
@@ -155,13 +163,7 @@ def track_aircraft(beacon, save_beacon=True):
         add_beacon(db_conn.cursor(), beacon)
 
     try:
-        with open('ogn-ddb.json') as ogn_ddb:
-            device_dict = json.load(ogn_ddb)
-    except IOError:
-        device_dict = import_device_data()
-
-    try:
-        registration = device_dict[beacon['address']].upper()
+        registration = DEVICE_DICT[beacon['address']].upper()
     except KeyError:
         registration = 'UNKNOWN'
 
@@ -335,10 +337,6 @@ def process_beacon(raw_message):
     except ParseError as e:
         log.error('Error, {}'.format(e.message))
 
-
-log.info('Importing device data')
-import_device_data()
-
 log.info("Checking database for active flights")
 db_conn = make_database_connection()
 if db_conn:
@@ -383,6 +381,8 @@ try:
 except KeyboardInterrupt:
     print('\nStop ogn gateway')
     client.disconnect()
+except AttributeError as err:
+    log.error(err)
 
 
 # Debug Get beacons from DB
