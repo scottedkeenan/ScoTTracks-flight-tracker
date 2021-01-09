@@ -121,7 +121,7 @@ def detect_airfield(beacon, flight):
 def detect_tug(tracked_aircraft, flight):
     log.debug('Looking for a tug launch for {}'.format(flight.registration))
     for address in tracked_aircraft:
-        if flight.aircraft_type is 2:
+        if flight.aircraft_type == 2:
             log.info('This IS a tug!')
             return False
         if address == flight.address:
@@ -130,7 +130,7 @@ def detect_tug(tracked_aircraft, flight):
         if other_flight.takeoff_timestamp and other_flight.takeoff_airfield == flight.takeoff_airfield:
             time_difference = (other_flight.takeoff_timestamp - flight.takeoff_timestamp).total_seconds()
             if -10 < time_difference < 10:
-                if other_flight.aircraft_type is 2:
+                if other_flight.aircraft_type == 2:
                     log.info("Tug found: {} is towing {} at {}".format(other_flight.registration, flight.registration, flight.takeoff_airfield))
                     flight.launch_type = 'aerotow_glider'
                 else:
