@@ -52,15 +52,24 @@ class Flight:
 
     def update(self, beacon):
         self.altitude = beacon['altitude']
+        agl = self.agl()
+        if self.status == 'air' and not self.launch_complete:
+            # update launch height if None or agl is greater
+            if not self.launch_height:
+                self.launch_height = agl
+            elif agl > self.launch_height:
+                self.launch_height = agl
+
         self.ground_speed = beacon['ground_speed']
         self.receiver_name = beacon['receiver_name']
         self.timestamp = beacon['timestamp']
 
-    def launch(self):
+    def launch(self, time_known=True):
         if self.status == 'ground':
             self.status = 'air'
             self.takeoff_airfield = self.nearest_airfield['name']
-            self.takeoff_timestamp = self.timestamp
+            if time_known:
+                self.takeoff_timestamp = self.timestamp
             if self.aircraft_type is 2:
                 self.launch_type = 'tug'
         else:
@@ -73,14 +82,18 @@ class Flight:
             return None
 
     def set_launch_type(self, launch_type):
-        initial_launch_types = ['winch', 'aerotow', 'self', 'tug']
-        updatable_launch_types = ['winch l/f', 'tug']
+        initial_launch_types = ['winch', 'aerotow_pair', 'aerotow_glider' 'self', 'tug', 'unknown, nearest field', 'aerotow_sl']
+        updatable_launch_types = ['winch l/f']
 
         if self.launch_type is None:
             if launch_type in initial_launch_types:
                 self.launch_type = launch_type
             else:
-                print('Not an initial launch type')
+                print('{} not an initial launch type for {} at {} {}'.format(
+                    launch_type,
+                    self.registration if self.registration != 'UNKNOWN' else self.address,
+                    self.takeoff_airfield,
+                    self.timestamp))
         elif self.launch_type:
             if launch_type in updatable_launch_types:
                 self.launch_type = updatable_launch_types
