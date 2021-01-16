@@ -247,7 +247,10 @@ def track_aircraft(beacon, save_beacon=True):
 
                         if flight.agl() > 100:
                             flight.add_launch_climb_rate_point(beacon['climb_rate'])
+                        try:
                             flight.average_launch_climb_rate = mean(flight.launch_climb_rates)
+                        except StatisticsError:
+                            log.info("No data to average, skipping")
 
                             if not flight.launch_type:
                                 if not detect_tug(tracked_aircraft, flight):
@@ -283,6 +286,7 @@ def track_aircraft(beacon, save_beacon=True):
                                     db_conn.commit()
                             except StatisticsError:
                                 log.info("No data to average, skipping")
+
 
         elif beacon['ground_speed'] <= 30 and beacon['altitude'] - flight.nearest_airfield['elevation'] <= 15:
             log.debug("aircraft detected on ground")
