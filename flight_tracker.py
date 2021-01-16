@@ -377,16 +377,19 @@ filters = get_filters_by_country_codes(db_conn.cursor(), track_countries)
 db_conn.close()
 aprs_filter = ' '.join(filters)
 
-client = AprsClient(aprs_user='N0CALL', aprs_filter=aprs_filter)
+if len(aprs_filter.split(' ')) > 9:
+    log.error("Too many aprs filters")
+else:
+    client = AprsClient(aprs_user='N0CALL', aprs_filter=aprs_filter)
 
-client.connect()
-try:
-    client.run(callback=process_beacon, autoreconnect=True)
-except KeyboardInterrupt:
-    print('\nStop ogn gateway')
-    client.disconnect()
-except AttributeError as err:
-    log.error(err)
+    client.connect()
+    try:
+        client.run(callback=process_beacon, autoreconnect=True)
+    except KeyboardInterrupt:
+        print('\nStop ogn gateway')
+        client.disconnect()
+    except AttributeError as err:
+        log.error(err)
 
 
 # Debug Get beacons from DB
