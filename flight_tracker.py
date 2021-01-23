@@ -71,7 +71,7 @@ def make_database_connection(retry_counter=0):
             host=config['TRACKER']['database_host'],
             database=config['TRACKER']['database'])
         return conn
-    except mysql.connector.errors.InterfaceError as err:
+    except mysql.connector.Error as err:
         log.error(err)
         retry_counter += 1
         return make_database_connection(retry_counter)
