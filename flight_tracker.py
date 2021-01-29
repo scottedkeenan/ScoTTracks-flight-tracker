@@ -3,7 +3,7 @@ import requests
 import json
 import logging
 import os
-
+import time
 import pprint
 
 import mysql.connector
@@ -78,6 +78,8 @@ def make_database_connection(retry_counter=0):
 
 
 db_conn = make_database_connection()
+if not db_conn:
+    exit(1)
 
 AIRFIELD_DATA = {}
 for airfield in get_active_airfields_for_countries(db_conn.cursor(), config['TRACKER']['track_countries'].split(',')):
@@ -145,12 +147,12 @@ def detect_tug(tracked_aircraft, flight):
                     log.info("Aerotow pair found, can't tell which is the tug though: {} is towing with {} at {}".format(other_flight.registration, flight.registration, flight.takeoff_airfield))
                     flight.launch_type = 'aerotow_pair'
                     other_flight.launch_type = 'aerotow_pair'
-                flight.tug = other_flight.registration
-                other_flight.tug = flight.registration
+                flight.tug = other_flight
+                other_flight.tug = flight
                 return True
 
 
-def track_aircraft(beacon, save_beacon=True):
+def track_aircraft(beacon, save_beacon=True, check_date=True):
 
     log.debug("track aircraft!")
 
@@ -162,8 +164,7 @@ def track_aircraft(beacon, save_beacon=True):
     if save_beacon:
         add_beacon(db_conn.cursor(), beacon)
 
-
-    if beacon['address'] in tracked_aircraft.keys():
+    if beacon['address'] in tracked_aircraft.keys() and check_date:
         # Remove outdated tracking
         if datetime.date(tracked_aircraft[beacon['address']].timestamp) < datetime.today().date():
             tracked_aircraft.pop(beacon['address'])
@@ -240,7 +241,7 @@ def track_aircraft(beacon, save_beacon=True):
 
             else:
 
-                # todo remove unsued flight object fields eg 'tracking_launch_height'
+                # todo remove unused flight object fields eg 'tracking_launch_height'
 
                 if flight.takeoff_timestamp and not flight.launch_complete:
 
@@ -281,7 +282,7 @@ def track_aircraft(beacon, save_beacon=True):
                     elif not flight.launch_complete:
                         flight.launch_complete = True
                         log.info(
-                            '{} launch complete (timout) at {}! Launch type: {}, Launch height: {}, Launch time: {}, Average vertical: {}'.format(
+                            '{} launch complete (timeout) at {}! Launch type: {}, Launch height: {}, Launch time: {}, Average vertical: {}'.format(
                                 flight.registration,
                                 flight.takeoff_airfield,
                                 flight.launch_type,
@@ -306,6 +307,28 @@ def track_aircraft(beacon, save_beacon=True):
                             ))
                         update_flight(db_conn.cursor(), flight.to_dict())
                         db_conn.commit()
+
+                    if flight.launch_type in ['aerotow_glider', 'aerotow_pair']:
+                        # Check vertical separation with tug/other in pair
+                        vertical_separation = flight.altitude - flight.tug.altitude
+                        if vertical_separation > 125 or vertical_separation < -125:
+                            log.info('Aerotow involving {} and {} is complete with a vertical separation of {}m at a height of {} ({} ft)'.format(
+                                flight.registration,
+                                flight.tug.registration,
+                                vertical_separation,
+                                flight.launch_height,
+                                flight.launch_height * 3.281
+                            ))
+                            flight.launch_complete = True
+                            flight.tug.launch_complete = True
+
+                        # todo: detect horizontal separation as a backup
+
+                        update_flight(db_conn.cursor(), flight.to_dict())
+                        db_conn.commit()
+                        update_flight(db_conn.cursor(), flight.tug.to_dict())
+                        db_conn.commit()
+
 
                     if flight.launch_type == 'aerotow_sl':
                         try:
@@ -336,7 +359,6 @@ def track_aircraft(beacon, save_beacon=True):
                                 db_conn.commit()
                         except StatisticsError:
                             log.info("No data to average, skipping")
-
 
 
 
@@ -416,12 +438,12 @@ for db_flight in database_flights:
     db_tracked_flight.average_launch_climb_rate = db_flight[18]
     db_tracked_flight.max_launch_climb_rate = db_flight[19]
     db_tracked_flight.launch_complete = True if db_flight[20] == 1 else False
+    # todo: other flight as object
     db_tracked_flight.tug = db_flight[21]
 
     tracked_aircraft[db_tracked_flight.address] = db_tracked_flight
-    pprint.pprint(db_tracked_flight.to_dict())
 
-log.info("=========")
+log.info("Database flights =========")
 for aircraft in tracked_aircraft:
     log.info(pprint.pformat(tracked_aircraft[aircraft].to_dict()))
 log.info("=========")
@@ -434,30 +456,46 @@ filters = get_filters_by_country_codes(db_conn.cursor(), track_countries)
 db_conn.close()
 aprs_filter = ' '.join(filters)
 
-if len(aprs_filter.split(' ')) > 9:
-    log.error("Too many aprs filters")
-else:
-    client = AprsClient(aprs_user='N0CALL', aprs_filter=aprs_filter)
 
-    client.connect()
+def connect_to_ogn_and_run(filter_string):
+    if len(filter_string.split(' ')) > 9:
+        log.error("Too many aprs filters")
+    else:
+        log.info('Connecting to OGN gateway')
+        client = AprsClient(aprs_user='N0CALL', aprs_filter=aprs_filter)
+        client.connect()
+        try:
+            client.run(callback=process_beacon, autoreconnect=True)
+        except KeyboardInterrupt:
+            client.disconnect()
+            raise
+        except AttributeError as err:
+            log.error(err)
+
+
+failures = 0
+while failures < 5:
     try:
-        client.run(callback=process_beacon, autoreconnect=True)
+        connect_to_ogn_and_run(aprs_filter)
+    except ConnectionRefusedError as ex:
+        log.error(ex)
+        failures += 1
     except KeyboardInterrupt:
-        print('\nStop ogn gateway')
-        client.disconnect()
-    except AttributeError as err:
-        log.error(err)
+        log.info('Keyboard interrupt!')
+        log.info('Stop OGN gateway')
+        break
+
+log.error('Exited with {} failures'.format(failures))
 
 
 # Debug Get beacons from DB
 
-# need to also prevent checking data is up to date
-# comment out the live import above
-
+# # comment out the live import above
+#
 # db_conn = make_database_connection()
-# # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-20 10:00:00', '2020-12-20 18:00:00')
+# beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2021-01-01 10:00:00', '2021-01-31 18:00:00')
 # # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-31 10:00:00', '2020-12-31 18:00:00')
-# beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-27 10:00:00', '2020-12-27 18:00:00')
+# # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-27 10:00:00', '2020-12-27 18:00:00')
 # # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD51CC', '2020-12-22 15:27:19', '2020-12-22 15:33:15')
 # # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD5133', '2020-12-22 15:44:33', '2020-12-22 16:08:56')
 # # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), '405612', '2020-12-22 15:35:59', '2020-12-22 15:52:17')
@@ -468,6 +506,6 @@ else:
 # for beacon in beacons:
 #     # log.warning(beacon)
 #     if beacon['aircraft_type'] in [1,2]:
-#         beacon['timestamp'] = beacon['timestamp'].replace(year=2021, day=9, month=1)
-#         beacon['reference_timestamp'] = beacon['reference_timestamp'].replace(year=2021, day=9, month=1)
-#         track_aircraft(beacon, save_beacon=False)
+#         beacon['timestamp'] = beacon['timestamp'].replace(year=2021, day=29, month=1)
+#         beacon['reference_timestamp'] = beacon['reference_timestamp'].replace(year=2021, day=29, month=1)
+#         track_aircraft(beacon, save_beacon=False, check_date=False)

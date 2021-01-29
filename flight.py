@@ -25,6 +25,12 @@ class Flight:
         self.tug = tug
 
     def to_dict(self):
+
+        try:
+            tug_registration = self.tug.registration
+        except AttributeError:
+            tug_registration = None
+
         return {
             'nearest_airfield': self.nearest_airfield,
             'address': self.address,
@@ -47,7 +53,7 @@ class Flight:
             'launch_climb_rates': self.launch_climb_rates,
             'launch_complete': self.launch_complete,
             'distance_to_nearest_airfield': self.distance_to_nearest_airfield,
-            'tug': self.tug
+            'tug': tug_registration
         }
 
     def update(self, beacon):
