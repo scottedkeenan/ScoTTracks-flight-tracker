@@ -1,3 +1,7 @@
+from collections import deque
+from statistics import mean
+# from aerotow import Aerotow
+import pprint
 class Flight:
     def __init__(self, nearest_airfield, address, aircraft_type, altitude, ground_speed, receiver_name, timestamp,
                  registration, distance_to_nearest_airfield=None, tug=None):
@@ -24,11 +28,20 @@ class Flight:
         self.distance_to_nearest_airfield = distance_to_nearest_airfield
         self.tug = tug
 
+        self.last_latitude = None
+        self.last_longitude = None
+        self.last_altitude = None
+
+        self.last_pings = deque([], maxlen=10)
+        self.launch_rec_name = None
+
+        self.aerotow = None
+
     def to_dict(self):
 
-        try:
-            tug_registration = self.tug.registration
-        except AttributeError:
+        if self.tug:
+            tug_registration = self.tug.registration if self.tug.registration != 'UNKNOWN' else self.tug.address
+        else:
             tug_registration = None
 
         return {
@@ -54,13 +67,15 @@ class Flight:
             'launch_complete': self.launch_complete,
             'distance_to_nearest_airfield': self.distance_to_nearest_airfield,
             'tug': tug_registration
+
         }
 
     def update(self, beacon):
         self.altitude = beacon['altitude']
-        agl = self.agl()
+
         if self.status == 'air' and not self.launch_complete:
             # update launch height if None or agl is greater
+            agl = self.agl()
             if not self.launch_height:
                 self.launch_height = agl
             elif agl > self.launch_height:
@@ -69,13 +84,33 @@ class Flight:
         self.ground_speed = beacon['ground_speed']
         self.receiver_name = beacon['receiver_name']
         self.timestamp = beacon['timestamp']
+        self.last_latitude = beacon['latitude']
+        self.last_longitude = beacon['longitude']
+        self.last_altitude = beacon['altitude']
+
+        if self.takeoff_timestamp:
+            self.last_pings.append(
+                {
+                    'timestamp': beacon['timestamp'],
+                    'altitude': beacon['altitude'],
+                    'latitude': beacon['latitude'],
+                    'longitude': beacon['longitude'],
+                    'receiver': beacon['receiver_name'],
+                    'signal': beacon['signal_quality']
+                })
+            if len(self.last_pings) == 10:
+                # it's a deque ^
+                self.mean_recent_launch_altitude = mean([i['altitude'] for i in self.last_pings])
+                self.mean_recent_launch_latitude = mean([i['latitude'] for i in self.last_pings])
+                self.mean_recent_launch_longitude = mean([i['longitude'] for i in self.last_pings])
 
     def launch(self, time_known=True):
         if self.status == 'ground':
             self.status = 'air'
             self.takeoff_airfield = self.nearest_airfield['name']
-            if time_known:
-                self.takeoff_timestamp = self.timestamp
+            self.takeoff_timestamp = self.timestamp
+            # if time_known:
+                # todo set a flag
             if self.aircraft_type is 2:
                 self.launch_type = 'tug'
         else:
@@ -113,3 +148,17 @@ class Flight:
     def agl(self):
         if self.nearest_airfield:
             return self.altitude - self.nearest_airfield['elevation']
+
+    def recent_launch_averages(self):
+        if self.mean_recent_launch_altitude and self.mean_recent_launch_latitude and self.mean_recent_launch_longitude:
+            return {
+                'altitude': self.mean_recent_launch_altitude,
+                'latitude': self.mean_recent_launch_latitude,
+                'longitude': self.mean_recent_launch_longitude
+            }
+        else:
+            return None
+
+    def update_aerotow(self, beacon):
+        if self.aerotow:
+            self.aerotow.insert_data(self, beacon)
