@@ -12,7 +12,7 @@ def create_daily_flights_table(cursor):
         `id` INT PRIMARY KEY AUTO_INCREMENT,
         `airfield` varchar(255) DEFAULT NULL,
         `address` varchar(255) DEFAULT NULL,
-        `address_type` int(11) DEFAULT NULL,
+        `aircraft_type` int(11) DEFAULT NULL,
         `altitude` float DEFAULT NULL,
         `ground_speed` float DEFAULT NULL,
         `receiver_name` varchar(255) DEFAULT NULL,
@@ -88,7 +88,7 @@ def add_flight(cursor, aircraft_data):
     INSERT INTO daily_flights (
         airfield, 
         address,
-        address_type,
+        aircraft_type,
         altitude,
         ground_speed,
         receiver_name,
@@ -98,24 +98,36 @@ def add_flight(cursor, aircraft_data):
         takeoff_airfield,
         landing_timestamp,
         landing_airfield,
-        status
+        status,
+        launch_height,
+        launch_type,
+        average_launch_climb_rate,
+        max_launch_climb_rate,
+        launch_complete,
+        tug_registration
     )
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);"""
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);"""
 
     insert_row_data = (
-        aircraft_data['airfield'],
+        aircraft_data['nearest_airfield']['name'],
         aircraft_data['address'],
-        aircraft_data['address_type'],
+        aircraft_data['aircraft_type'],
         aircraft_data['altitude'],
         aircraft_data['ground_speed'],
         aircraft_data['receiver_name'],
-        aircraft_data['reference_timestamp'],
+        aircraft_data['timestamp'],
         aircraft_data['registration'],
         aircraft_data['takeoff_timestamp'],
         aircraft_data['takeoff_airfield'],
         aircraft_data['landing_timestamp'],
         aircraft_data['landing_airfield'],
-        aircraft_data['status']
+        aircraft_data['status'],
+        aircraft_data['launch_height'],
+        aircraft_data['launch_type'],
+        aircraft_data['average_launch_climb_rate'],
+        aircraft_data['max_launch_climb_rate'],
+        aircraft_data['launch_complete'],
+        aircraft_data['tug']
     )
 
     cursor.execute(insert_row_sql, insert_row_data)
@@ -214,7 +226,7 @@ def update_flight(cursor, aircraft_data):
     UPDATE daily_flights SET
         airfield = %s, 
         address = %s,
-        address_type = %s,
+        aircraft_type = %s,
         altitude = %s,
         ground_speed = %s,
         receiver_name = %s,
@@ -225,17 +237,22 @@ def update_flight(cursor, aircraft_data):
         landing_timestamp = %s,
         landing_airfield = %s,
         status = %s,
-        launch_height = %s
+        launch_height = %s,
+        launch_type = %s,
+        average_launch_climb_rate = %s,
+        max_launch_climb_rate = %s,
+        launch_complete = %s,
+        tug_registration = %s
     WHERE address = %s AND takeoff_timestamp = %s;"""
 
     update_row_data = (
-        aircraft_data['airfield'],
+        aircraft_data['nearest_airfield']['name'],
         aircraft_data['address'],
-        aircraft_data['address_type'],
+        aircraft_data['aircraft_type'],
         aircraft_data['altitude'],
         aircraft_data['ground_speed'],
         aircraft_data['receiver_name'],
-        aircraft_data['reference_timestamp'],
+        aircraft_data['timestamp'],
         aircraft_data['registration'],
         aircraft_data['takeoff_timestamp'],
         aircraft_data['takeoff_airfield'],
@@ -243,6 +260,12 @@ def update_flight(cursor, aircraft_data):
         aircraft_data['landing_airfield'],
         aircraft_data['status'],
         aircraft_data['launch_height'],
+        aircraft_data['launch_type'],
+        aircraft_data['average_launch_climb_rate'],
+        aircraft_data['max_launch_climb_rate'],
+        aircraft_data['launch_complete'],
+        aircraft_data['tug'],
+
         aircraft_data['address'],
         aircraft_data['takeoff_timestamp']
     )
@@ -270,14 +293,15 @@ def get_all_flights(cursor):
     return cursor.fetchall()
 
 
-def get_beacons_for_flight(cursor, start_datetime, end_datetime):
+def get_raw_beacons_for_address_between(cursor, address, start_datetime, end_datetime):
+    # print("Getting beacons between {} and {}".format(start_datetime, end_datetime))
     get_beacons_sql = """
-    SELECT timestamp, altitude, ground_speed
-    FROM `received_beacons`
-    WHERE reference_timestamp
-    BETWEEN '%s AND '%s'
+    SELECT * FROM `received_beacons`
+    WHERE address = %s
+    AND timestamp BETWEEN %s AND %s
+    ORDER BY timestamp
     """
-    get_beacons_data = (start_datetime, end_datetime)
+    get_beacons_data = (address, start_datetime, end_datetime)
 
     cursor.execute(get_beacons_sql, get_beacons_data)
     return cursor.fetchall()
@@ -312,10 +336,10 @@ def get_igc_data_for_address_between(cursor, address, start_datetime, end_dateti
     cursor.execute(get_beacons_sql, get_beacons_data)
     return cursor
 
-def get_beacons_between(cursor, start_datetime, end_datetime):
+def get_raw_beacons_between(cursor, start_datetime, end_datetime):
     # print("Getting beacons between {} and {}".format(start_datetime, end_datetime))
     get_beacons_sql = """
-    SELECT timestamp, altitude, ground_speed
+    SELECT *
     FROM `received_beacons`
     WHERE reference_timestamp
     BETWEEN %s AND %s
@@ -325,3 +349,41 @@ def get_beacons_between(cursor, start_datetime, end_datetime):
     cursor.execute(get_beacons_sql, get_beacons_data)
     return cursor.fetchall()
     # BETWEEN '2020-12-01 15:02:55' AND '2020-12-01 15:09:55'
+
+
+def get_airfields(cursor):
+    get_airfields_sql = """
+    SELECT *
+    FROM `airfields`
+    """
+    cursor.execute(get_airfields_sql)
+    return cursor.fetchall()
+
+
+def get_active_airfields_for_countries(cursor, country_codes):
+    placeholder = '%s'
+    placeholders = ', '.join(placeholder for unused in country_codes)
+
+    get_airfields_sql = """
+    SELECT *
+    FROM `airfields`
+    WHERE is_active = TRUE
+    AND country_code IN (%s);
+    """ % placeholders
+
+    cursor.execute(get_airfields_sql, country_codes)
+    return cursor.fetchall()
+
+
+def get_filters_by_country_codes(cursor, country_codes):
+    placeholder = '%s'
+    placeholders = ', '.join(placeholder for unused in country_codes)
+
+    get_filters_sql = """
+    SELECT aprs_filter
+    FROM `countries`
+    WHERE country_code IN (%s);
+    """ % placeholders
+
+    cursor.execute(get_filters_sql, country_codes)
+    return [i[0] for i in cursor.fetchall()]

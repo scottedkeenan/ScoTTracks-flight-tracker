@@ -1,0 +1,2 @@
+INSERT INTO `airfields`(`name`, `nice_name`, `latitude`, `longitude`, `elevation`, `country_code`, `is_active`)
+VALUES ('salon-de-provence','Air Base 701 Salon-de-Provence',43.607354, 5.108690, 60,'FR',1)
