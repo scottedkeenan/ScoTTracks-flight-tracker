@@ -39,10 +39,13 @@ class Flight:
 
     def to_dict(self):
 
-        if self.tug:
-            tug_registration = self.tug.registration if self.tug.registration != 'UNKNOWN' else self.tug.address
-        else:
-            tug_registration = None
+        try:
+            if self.tug:
+                tug_registration = self.tug.registration if self.tug.registration != 'UNKNOWN' else self.tug.address
+            else:
+                tug_registration = None
+        except AttributeError:
+            tug_registration = self.tug
 
         return {
             'nearest_airfield': self.nearest_airfield,

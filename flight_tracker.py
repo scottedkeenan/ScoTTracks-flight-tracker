@@ -189,7 +189,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
             registration = DEVICE_DICT[beacon['address']].upper()
         except KeyError:
             registration = 'UNKNOWN'
-        log.debug('Aircraft {} not tracked yet'.format(beacon['address']))
+        log.info('Aircraft {} not tracked yet'.format(beacon['address']))
         new_flight = Flight(
             None,
             beacon['address'],
@@ -202,11 +202,11 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
         )
         detect_airfield(beacon, new_flight)
 
-        if beacon['ground_speed'] > 65 and new_flight.agl() > 60:
+        if beacon['ground_speed'] > float(config['TRACKER']['airborne_detection_speed']) and new_flight.agl() > float(config['TRACKER']['airborne_detection_agl']):
             new_flight.status = 'air'
         else:
             new_flight.status = 'ground'
-        log.debug("Starting to track aircraft ".format(registration))
+        log.info("Starting to track aircraft {} with status {}".format(registration, new_flight.status))
         tracked_aircraft[beacon['address']] = new_flight
     else:
         log.debug('Updating tracked aircraft')
@@ -216,7 +216,8 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
         detect_airfield(beacon, flight) # updates airfield and distance to airfield
         flight.update(beacon)
 
-        if beacon['ground_speed'] > 65 and flight.agl() > 60:
+        if beacon['ground_speed'] > float(config['TRACKER']['airborne_detection_speed']) and flight.agl() > float(config['TRACKER']['airborne_detection_agl']):
+
             log.debug("airborne aircraft detected")
 
             if flight.status == 'ground':
@@ -369,11 +370,17 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                         except StatisticsError:
                             log.info("No data to average, skipping")
 
-        elif beacon['ground_speed'] < 65 and flight.agl() < 60:
-            log.debug("aircraft detected on ground")
+        elif flight.status == 'air'\
+                and beacon['ground_speed'] < float(config['TRACKER']['landing_detection_speed'])\
+                and flight.agl() < float(config['TRACKER']['landing_detection_agl'])\
+                and flight.distance_to_nearest_airfield < float(config['TRACKER']['airfield_detection_radius'])\
+                and beacon['climb_rate'] < 1:
 
-            if flight.status == 'air' and flight.distance_to_nearest_airfield < float(config['TRACKER']['airfield_detection_radius']):
+                log.info("Aircraft {} detected below airborne detection criteria".format(
+                    flight.address if flight.registration == 'UNKNOWN' else flight.registration))
+
                 # Aircraft landing detected
+                # todo: landout detection
                 flight.status = 'ground'
                 flight.landing_timestamp = beacon['timestamp']
                 flight.landing_airfield = flight.nearest_airfield['name']
@@ -384,6 +391,8 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                 log.info("Updating aircraft {} as landed at {}".format(
                     flight.address if flight.registration == 'UNKNOWN' else flight.registration,
                     flight.landing_airfield))
+
+                log.info('Landing data... ground_speed: {}, agl: {}, climb_rate: {}'.format(beacon['ground_speed'], flight.agl(), beacon['climb_rate']))
 
                 if flight.takeoff_timestamp:
                     update_flight(db_conn.cursor(), flight.to_dict())
@@ -402,6 +411,13 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                         config['TRACKER']['chart_directory']
                     )
                 tracked_aircraft.pop(flight.address)
+            # else:
+            #     log.info("NOT Updating aircraft {} as landed at {}".format(
+            #         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
+            #         flight.landing_airfield))
+            #     log.info('NOT Landing data... ground_speed: {}, agl: {}, climb_rate: {}'.format(beacon['ground_speed'],
+            #                                                                                 flight.agl(),
+            #                                                                                 beacon['climb_rate']))
 
     log.debug('Tracked aircraft =========================')
     for flight in tracked_aircraft:
@@ -507,7 +523,7 @@ log.error('Exited with {} failures'.format(failures))
 # db_conn = make_database_connection()
 # # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-22 10:00:00', '2020-12-22 18:00:00')
 # # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2021-01-29 08:00:00', '2021-01-29 18:00:00')
-# beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-29 10:00:00', '2050-12-31 18:00:00')
+# beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2021-01-03 10:00:00', '2021-01-10 18:00:00')
 # # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD51CC', '2020-12-22 15:27:19', '2020-12-22 15:33:15')
 # # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD5133', '2020-12-22 15:44:33', '2020-12-22 16:08:56')
 # # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), '405612', '2020-12-22 15:35:59', '2020-12-22 15:52:17')
@@ -518,6 +534,6 @@ log.error('Exited with {} failures'.format(failures))
 # for beacon in beacons:
 #     # log.warning(beacon)
 #     if beacon['aircraft_type'] in [1,2]:
-#         # beacon['timestamp'] = beacon['timestamp'].replace(year=2021, day=29, month=1)
+#         # beacon['timestamp'] = beacon['timestamp'].replace(year=2021, day=1, month=2)
 #         # beacon['reference_timestamp'] = beacon['reference_timestamp'].replace(year=2021, day=29, month=1)
 #         track_aircraft(beacon, save_beacon=False, check_date=False)
