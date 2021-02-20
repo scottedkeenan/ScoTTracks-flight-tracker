@@ -21,7 +21,7 @@ class Aerotow:
             flight2.address:  flight2
         }
 
-        log.debug('[A/T] flights: {}'.format(pprint.pformat(self.flights)))
+        log.info('[A/T] flights: {}'.format(pprint.pformat(self.flights)))
 
         self.check_failures = 0
 
@@ -121,6 +121,12 @@ class Aerotow:
         self.flight_beacon_counts[flight.address] += 1
 
         self.check_complete(beacon, self.flights[flight.address])
+
+    def abort(self):
+        # logging.info('[A/T] failure beacons: {}'.format(pprint.pformat(self._beacons)))
+        for flight in self.flights.values():
+            flight.launch_complete = True
+            flight.launch_height = None
 
     def check_complete(self, beacon, beacon_flight):
 
@@ -230,11 +236,7 @@ class Aerotow:
         elif self.check_failures >= 5:
             # todo: switch to climb rate based a/t tracking
             log.info('abort tracking, too many failures')
-            logging.debug('[A/T] failure beacons: {}'.format(pprint.pformat(self._beacons)))
-            beacon_flight.launch_complete = True
-            beacon_flight.launch_height = 0
-            beacon_flight.tug.launch_complete = True
-            beacon_flight.tug.launch_height = 0
+            self.abort()
 
 # work out which is in front (tug)
 # update the aircraft with their types

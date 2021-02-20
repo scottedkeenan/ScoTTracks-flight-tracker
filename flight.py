@@ -2,6 +2,12 @@ from collections import deque
 from statistics import mean
 # from aerotow import Aerotow
 import pprint
+import os
+
+import logging
+logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
+log = logging.getLogger(__name__)
+
 class Flight:
     def __init__(self, nearest_airfield, address, aircraft_type, altitude, ground_speed, receiver_name, timestamp,
                  registration, distance_to_nearest_airfield=None, tug=None):
@@ -23,7 +29,10 @@ class Flight:
         self.launch_type = None
         self.average_launch_climb_rate = 0
         self.max_launch_climb_rate = 0
-        self.launch_climb_rates = []
+        self.launch_climb_rates = {}
+        self.launch_beacon_heights = []
+        self.takeoff_detection_height = None
+        self.launch_gradients = []
         self.launch_complete = False
         self.distance_to_nearest_airfield = distance_to_nearest_airfield
         self.tug = tug
@@ -39,10 +48,13 @@ class Flight:
 
     def to_dict(self):
 
-        if self.tug:
-            tug_registration = self.tug.registration if self.tug.registration != 'UNKNOWN' else self.tug.address
-        else:
-            tug_registration = None
+        try:
+            if self.tug:
+                tug_registration = self.tug.registration if self.tug.registration != 'UNKNOWN' else self.tug.address
+            else:
+                tug_registration = None
+        except AttributeError:
+            tug_registration = self.tug
 
         return {
             'nearest_airfield': self.nearest_airfield,
@@ -74,12 +86,20 @@ class Flight:
         self.altitude = beacon['altitude']
 
         if self.status == 'air' and not self.launch_complete:
-            # update launch height if None or agl is greater
-            agl = self.agl()
-            if not self.launch_height:
-                self.launch_height = agl
-            elif agl > self.launch_height:
-                self.launch_height = agl
+            if not self.takeoff_detection_height:
+                self.launch_complete = True
+            else:
+                # update launch height if None or agl is greater
+                agl = self.agl()
+                if not self.launch_height:
+                    self.launch_height = agl
+                elif agl > self.launch_height:
+                    self.launch_height = agl
+
+                self.launch_climb_rates[self.timestamp] = beacon['climb_rate']
+                self.launch_beacon_heights.append((self.timestamp, self.agl()))
+                launch_gradient = self.launch_gradient()
+                self.launch_gradients.append(launch_gradient)
 
         self.ground_speed = beacon['ground_speed']
         self.receiver_name = beacon['receiver_name']
@@ -88,7 +108,8 @@ class Flight:
         self.last_longitude = beacon['longitude']
         self.last_altitude = beacon['altitude']
 
-        if self.takeoff_timestamp:
+        if self.takeoff_timestamp and self.launch_type not in ['aerotow_pair', 'aerotow_glider'] and not self.launch_complete:
+            # todo: consider if last pings should be in aerotow object
             self.last_pings.append(
                 {
                     'timestamp': beacon['timestamp'],
@@ -109,18 +130,48 @@ class Flight:
             self.status = 'air'
             self.takeoff_airfield = self.nearest_airfield['name']
             self.takeoff_timestamp = self.timestamp
+            self.takeoff_detection_height = self.agl()
             # if time_known:
                 # todo set a flag
-            if self.aircraft_type is 2:
-                self.launch_type = 'tug'
+            if self.nearest_airfield['launch_type_detection']:
+                log.info('Yes to launch type detection')
+                if self.aircraft_type == 2:
+                    self.launch_type = 'tug'
+            else:
+                if time_known:
+                    log.info('Launch type detection disabled for {} at {}'.format(self.registration,
+                                                                                  self.takeoff_airfield))
+                else:
+                    log.info('Launch type detection unavailable for {} at {}'.format(self.registration,
+                                                                                  self.takeoff_airfield))
+                self.launch_complete = True
+                self.launch_type = None
         else:
-            print("Can't launch an airborne aircraft!")
+            log.error("Can't launch an airborne aircraft!")
 
     def seconds_since_launch(self):
         try:
             return (self.timestamp - self.takeoff_timestamp).total_seconds()
         except TypeError:
             return None
+
+    def launch_gradient(self):
+        # beacons don't aways arrive in timestamp order
+
+        last_launch_height = sorted(self.launch_beacon_heights)[-1]
+        if last_launch_height[0] == self.takeoff_timestamp:
+            return 0
+        try:
+            return (last_launch_height[1] - self.takeoff_detection_height) / (last_launch_height[0] - self.takeoff_timestamp).total_seconds()
+        except TypeError:
+            log.error('Bad gradient data: {}'.format(self.registration))
+            log.error('({} - {})/({} - {})'.format(
+                self.agl(),
+                self.takeoff_detection_height,
+                last_launch_height[0],
+                self.takeoff_timestamp
+            ))
+            return False
 
     def set_launch_type(self, launch_type):
         initial_launch_types = ['winch', 'aerotow_pair', 'aerotow_glider' 'self', 'tug', 'unknown, nearest field', 'aerotow_sl']
@@ -130,7 +181,7 @@ class Flight:
             if launch_type in initial_launch_types:
                 self.launch_type = launch_type
             else:
-                print('{} not an initial launch type for {} at {} {}'.format(
+                log.error('{} not an initial launch type for {} at {} {}'.format(
                     launch_type,
                     self.registration if self.registration != 'UNKNOWN' else self.address,
                     self.takeoff_airfield,
@@ -139,11 +190,7 @@ class Flight:
             if launch_type in updatable_launch_types:
                 self.launch_type = updatable_launch_types
             else:
-                print('Cannot change launch type to non-failure type during launch')
-
-
-    def add_launch_climb_rate_point(self, climb_rate):
-        self.launch_climb_rates.append(climb_rate)
+                log.error('Cannot change launch type to non-failure type during launch')
 
     def agl(self):
         if self.nearest_airfield:
