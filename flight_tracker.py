@@ -573,7 +573,7 @@ log.error('Exited with {} failures'.format(failures))
 # db_conn = make_database_connection()
 # # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-01-22 10:00:00', '2020-12-22 18:00:00')
 # # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True), '2020-12-29 08:40:55', '2021-12-31 23:00:00')
-# beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True), '2021-02-10 00:00:00', '2021-02-18 23:15:00')
+# beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True), '2021-02-10 00:00:00', '2022-02-18 23:15:00')
 #
 # # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2021-01-03 10:00:00', '2022-01-10 18:00:00')
 # # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD51CC', '2020-12-22 15:27:19', '2020-12-22 15:33:15')

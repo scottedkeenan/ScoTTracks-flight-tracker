@@ -209,3 +209,4 @@ class Flight:
     def update_aerotow(self, beacon):
         if self.aerotow:
             self.aerotow.insert_data(self, beacon)
+            pprint.pprint(self.aerotow._beacons)
