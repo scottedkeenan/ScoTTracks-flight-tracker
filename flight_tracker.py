@@ -376,13 +376,11 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                         update_flight(db_conn.cursor(), flight.tug.to_dict())
                         db_conn.commit()
                     except AttributeError as err:
-                        try:
+                            log.error(err)
+                            log.error(
+                                'Something went wrong with aerotow update for {}/{}, aborting'.format(flight.registration,
+                                                                                               flight.address))
                             flight.aerotow.abort()
-                        except AttributeError:
-                            log.error('Aerotow / tug data for flight {}/{} invalid, aborting'.format(flight.registration,
-                                                                                                     flight.address))
-                            flight.launch_complete = True
-                            flight.launch_height = None
 
                 if flight.launch_type in ['aerotow_sl', 'tug']:
                     try:

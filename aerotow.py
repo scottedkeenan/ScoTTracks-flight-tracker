@@ -188,6 +188,8 @@ class Aerotow:
                     self.check_counter_datetime = beacon['timestamp']
                     log.info('Check counter datetime now {}'.format(self.check_counter_datetime))
                     return
+                else:
+                    self.check_failures = 0
 
                 vertical_separation = averages[average_addresses[0]]['altitude'] - averages[average_addresses[1]]['altitude']
                 horizontal_separation = measure_distance.distance(
