@@ -104,7 +104,7 @@ def add_flight(cursor, aircraft_data):
         average_launch_climb_rate,
         max_launch_climb_rate,
         launch_complete,
-        tug_registration
+        tug_registration,
         aircraft_model,
         competition_number
     )
@@ -130,7 +130,7 @@ def add_flight(cursor, aircraft_data):
         aircraft_data['max_launch_climb_rate'],
         aircraft_data['launch_complete'],
         aircraft_data['tug'],
-        aircraft_data['aricraft_model'],
+        aircraft_data['aircraft_model'],
         aircraft_data['competition_number']
     )
 

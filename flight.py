@@ -68,7 +68,7 @@ class Flight:
             'timestamp': self.timestamp,# .strftime("%m/%d/%Y, %H:%M:%S")
             'registration': self.registration,
             'aircraft_model': self.aircraft_model,
-            'competion_number': self.competition_number,
+            'competition_number': self.competition_number,
 
             'takeoff_timestamp': self.takeoff_timestamp,
             'takeoff_airfield': self.takeoff_airfield,
