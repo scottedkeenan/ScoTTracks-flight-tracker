@@ -105,8 +105,10 @@ def add_flight(cursor, aircraft_data):
         max_launch_climb_rate,
         launch_complete,
         tug_registration
+        aircraft_model,
+        competition_number
     )
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);"""
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);"""
 
     insert_row_data = (
         aircraft_data['nearest_airfield']['name'],
@@ -127,7 +129,9 @@ def add_flight(cursor, aircraft_data):
         aircraft_data['average_launch_climb_rate'],
         aircraft_data['max_launch_climb_rate'],
         aircraft_data['launch_complete'],
-        aircraft_data['tug']
+        aircraft_data['tug'],
+        aircraft_data['aricraft_model'],
+        aircraft_data['competition_number']
     )
 
     cursor.execute(insert_row_sql, insert_row_data)
