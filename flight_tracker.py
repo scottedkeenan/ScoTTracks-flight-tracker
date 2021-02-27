@@ -221,7 +221,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
             new_flight.status = 'air'
         else:
             new_flight.status = 'ground'
-        log.info("Starting to track aircraft {} at {}km at {} with status {}".format(registration, new_flight.distance_to_nearest_airfield, new_flight.nearest_airfield['nice_name'], new_flight.status))
+        log.info("Starting to track aircraft {} {}km from {} with status {}".format(registration, new_flight.distance_to_nearest_airfield, new_flight.nearest_airfield['nice_name'], new_flight.status))
         tracked_aircraft[beacon['address']] = new_flight
     else:
         log.debug('Updating tracked aircraft')
@@ -478,16 +478,17 @@ def process_beacon(raw_message):
             if beacon['beacon_type'] in ['aprs_aircraft', 'flarm']:
                 log.debug('Aircraft beacon received')
                 if beacon['aircraft_type'] in [1, 2]:
-                    track_aircraft(beacon)
+                    try:
+                        track_aircraft(beacon)
+                    except TypeError as e:
+                        log.info('Type error while tracking: {}'.format(e))
                 else:
                     log.debug("Not a glider or tug")
         except KeyError as e:
-            log.debug('Beacon type field not found')
-            log.debug(e)
-            pass
+            log.debug('Beacon type field not found: {}'.format(e))
     except ParseError as e:
-        pass
-        # log.error('Error, {}'.format(e))
+        log.error('Parse error: {}'.format(e))
+
 
 log.info("Checking database for active flights")
 db_conn = make_database_connection()
