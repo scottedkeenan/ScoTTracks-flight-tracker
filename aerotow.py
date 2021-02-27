@@ -1,4 +1,3 @@
-from flight import Flight
 import datetime
 import pprint
 from geopy import distance as measure_distance

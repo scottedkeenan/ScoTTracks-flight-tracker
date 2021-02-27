@@ -1,7 +1,5 @@
 from collections import deque
 from statistics import mean
-# from aerotow import Aerotow
-import pprint
 import os
 
 import logging
