@@ -1,0 +1,1 @@
+ALTER TABLE `daily_flights` ADD `tug_registration` TINYTEXT NULL DEFAULT NULL AFTER `launch_complete`;
