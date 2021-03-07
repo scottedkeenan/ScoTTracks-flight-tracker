@@ -197,9 +197,6 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
         log.error("Unable to connect to database, skipping beacon")
         return
 
-    if save_beacon:
-        add_beacon(db_conn.cursor(), beacon)
-
     if beacon['address'] in tracked_aircraft.keys() and check_date:
         # Remove outdated tracking
         if datetime.date(tracked_aircraft[beacon['address']].timestamp) < datetime.today().date():
@@ -226,7 +223,6 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
             aircraft_model = None
             competition_number = None
 
-
         log.info('Aircraft {}/{} not tracked yet'.format(registration, beacon['address']))
 
         new_flight = Flight(
@@ -246,6 +242,8 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
 
         if beacon['ground_speed'] > float(config['TRACKER']['airborne_detection_speed']) and new_flight.agl() > float(config['TRACKER']['airborne_detection_agl']):
             new_flight.status = 'air'
+            if save_beacon:
+                add_beacon(db_conn.cursor(), beacon)
         else:
             new_flight.status = 'ground'
         log.info("Starting to track aircraft {}/{} {}km from {} with status {}".format(registration,
@@ -280,7 +278,6 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                         flight.nearest_airfield['name'], flight.timestamp))
                     flight.launch()
                     add_flight(db_conn.cursor(), flight.to_dict())
-                    db_conn.commit()
                 #2.5 naut. miles
                 elif flight.distance_to_nearest_airfield < 4.63:
                     #todo: give airfields a max launch detection range
@@ -297,7 +294,6 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     flight.launch_height = None
                     flight.launch_complete = True
                     add_flight(db_conn.cursor(), flight.to_dict())
-                    db_conn.commit()
                 # 2.5 naut. miles
                 else:
                     #todo: give airfields a max launch detection range
@@ -315,7 +311,10 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     flight.launch_height = None
                     flight.launch_complete = True
                     add_flight(db_conn.cursor(), flight.to_dict())
-                    db_conn.commit()
+                    if save_beacon:
+                        add_beacon(db_conn.cursor(), beacon)
+            else:
+                print('Not saving beacon for grounded aircraft')
 
         elif flight.status == 'air':
             # log.info('Speed: {}, {} | AGL: {}, {} | Dist: {} {} | Climb: {} {}'.format(
@@ -386,7 +385,6 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                             flight.average_launch_climb_rate
                         ))
                     update_flight(db_conn.cursor(), flight.to_dict())
-                    db_conn.commit()
 
                 if flight.launch_type == 'winch' and time_since_launch > launch_tracking_times['winch']:
                     flight.launch_complete = True
@@ -401,15 +399,12 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                         ))
                     log.info('Launch gradients: {}'.format(flight.launch_gradients))
                     update_flight(db_conn.cursor(), flight.to_dict())
-                    db_conn.commit()
 
                 if flight.launch_type in ['aerotow_glider', 'aerotow_pair', 'aerotow_tug']:
                     try:
                         flight.update_aerotow(beacon)
                         update_flight(db_conn.cursor(), flight.to_dict())
-                        db_conn.commit()
                         update_flight(db_conn.cursor(), flight.tug.to_dict())
-                        db_conn.commit()
                     except AttributeError as err:
                             log.error(err)
                             log.error(
@@ -476,10 +471,8 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
 
                     if flight.takeoff_timestamp:
                         update_flight(db_conn.cursor(), flight.to_dict())
-                        db_conn.commit()
                     else:
                         add_flight(db_conn.cursor(), flight.to_dict())
-                        db_conn.commit()
                     log.info('Aircraft {} flew from {} to {}'.format(
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
                         flight.takeoff_timestamp,
@@ -490,13 +483,9 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                             flight
                         )
                     tracked_aircraft.pop(flight.address)
-                # else:
-                #     log.info("NOT Updating aircraft {} as landed at {}".format(
-                #         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
-                #         flight.landing_airfield))
-                #     log.info('NOT Landing data... ground_speed: {}, agl: {}, climb_rate: {}'.format(beacon['ground_speed'],
-                #                                                                                 flight.agl(),
-                #                                                                                 beacon['climb_rate']))
+            if save_beacon:
+                add_beacon(db_conn.cursor(), beacon)
+            db_conn.commit()
 
     log.debug('Tracked aircraft =========================')
     for flight in tracked_aircraft:
@@ -504,8 +493,11 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
     log.debug('End Tracked aircraft {} {}'.format(len(tracked_aircraft), '======================'))
     db_conn.close()
 
+import time
 
 def process_beacon(raw_message):
+    log.info('Beacon process start')
+    start = time.time()
     try:
         beacon = parse(raw_message)
         try:
@@ -522,6 +514,8 @@ def process_beacon(raw_message):
             log.debug('Beacon type field not found: {}'.format(e))
     except ParseError as e:
         log.error('Parse error: {}'.format(e))
+    end = time.time()
+    log.info('Beacon took {} to process'.format(end - start))
 
 
 log.info("Checking database for active flights")

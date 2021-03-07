@@ -1,8 +1,14 @@
 # https://info.crunchydata.com/blog/easy-postgresql-10-and-pgadmin-4-setup-with-docker
 
 from datetime import datetime
-
+import os
 import json
+
+import logging
+
+logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
+log = logging.getLogger(__name__)
+
 
 def create_daily_flights_table(cursor):
     create_table_sql = """
@@ -138,6 +144,7 @@ def add_flight(cursor, aircraft_data):
 
 
 def add_beacon(cursor, beacon):
+    log.info('Adding beacon')
     insert_row_sql = """
     INSERT INTO `received_beacons` (
         address,
