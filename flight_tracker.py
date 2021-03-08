@@ -10,7 +10,7 @@ import mysql.connector
 from ogn.client import AprsClient
 from ogn.parser import parse, ParseError
 
-from flight_tracker_squirreler import add_flight, update_flight, get_currently_airborne_flights, add_beacon, get_beacons_for_address_between, get_raw_beacons_between, get_airfields, get_filters_by_country_codes, get_active_airfields_for_countries
+from flight_tracker_squirreler import add_flight, update_flight, get_currently_airborne_flights, add_beacon, get_beacons_for_address_between, get_raw_beacons_between, get_airfields, get_filters_by_country_codes, get_active_airfields_for_countries, get_raw_beacons_for_address_between
 
 from charts import draw_alt_graph
 
@@ -79,8 +79,22 @@ def import_device_data():
     return device_dict
 
 
+def import_beacon_correction_data():
+    try:
+        with open('beacon-correction-data.json', 'r') as beacon_correction_data:
+            return json.loads(beacon_correction_data.read())
+    except FileNotFoundError:
+        log.error('No ogn beacon correction file found')
+        return {}
+
+
 log.info('Importing device data')
 DEVICE_DICT = import_device_data()
+
+log.info('Importing beacon corrections')
+BEACON_CORRECTIONS = import_beacon_correction_data()
+
+log.info(pprint.pformat(BEACON_CORRECTIONS))
 
 tracked_aircraft = {}
 
@@ -199,6 +213,13 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
 
     if save_beacon:
         add_beacon(db_conn.cursor(), beacon)
+
+    try:
+        beacon['altitude'] = beacon['altitude'] + BEACON_CORRECTIONS[beacon['receiver_name']]
+        log.debug('Correction applied for {} beacon'.format(beacon['receiver_name']))
+    except KeyError:
+        log.debug('No correction to apply')
+        pass
 
     if beacon['address'] in tracked_aircraft.keys() and check_date:
         # Remove outdated tracking
@@ -615,12 +636,12 @@ log.error('Exited with {} failures'.format(failures))
 # db_conn = make_database_connection()
 # # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-01-22 10:00:00', '2020-12-22 18:00:00')
 # # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True), '2020-12-29 08:40:55', '2021-12-31 23:00:00')
-# beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True), '2021-02-21 00:00:00', '2022-02-18 23:15:00')
+# # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True), '2021-02-21 00:00:00', '2022-02-18 23:15:00')
 #
 # # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2021-01-03 10:00:00', '2022-01-10 18:00:00')
 # # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD51CC', '2020-12-22 15:27:19', '2020-12-22 15:33:15')
 # # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD5133', '2020-12-22 15:44:33', '2020-12-22 16:08:56')
-# # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), '405612', '2020-12-22 15:35:59', '2020-12-22 15:52:17')
+# beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DF0D62', '2021-03-07 09:46:00', '2021-03-07 18:00:00')
 #
 #
 # print(len(beacons))

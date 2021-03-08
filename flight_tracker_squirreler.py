@@ -314,7 +314,7 @@ def get_raw_beacons_for_address_between(cursor, address, start_datetime, end_dat
 def get_beacons_for_address_between(cursor, address, start_datetime, end_datetime):
     # print("Getting beacons between {} and {}".format(start_datetime, end_datetime))
     get_beacons_sql = """
-    SELECT timestamp, altitude, ground_speed
+    SELECT timestamp, altitude, ground_speed, receiver_name
     FROM `received_beacons`
     WHERE address = %s
     AND timestamp BETWEEN %s AND %s
