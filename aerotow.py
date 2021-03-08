@@ -1,13 +1,10 @@
-from flight import Flight
 import datetime
 import pprint
 from geopy import distance as measure_distance
 import os
 from statistics import mean
-
-
-
 import logging
+
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 log = logging.getLogger(__name__)
 
@@ -21,7 +18,7 @@ class Aerotow:
             flight2.address:  flight2
         }
 
-        log.debug('[A/T] flights: {}'.format(pprint.pformat(self.flights)))
+        # log.info('[A/T] flights: {}'.format(pprint.pformat(self.flights)))
 
         self.check_failures = 0
 
@@ -86,7 +83,7 @@ class Aerotow:
     def count_forwards(self, target_timestamp):
         d = datetime.timedelta(seconds=1)
         new_timestamp = list(self._beacons.keys())[-1]
-        while new_timestamp != target_timestamp:
+        while new_timestamp <= target_timestamp:
             new_timestamp = new_timestamp + d
             self._beacons[new_timestamp] = {}
 
@@ -96,31 +93,37 @@ class Aerotow:
 
         if self.flights[flight.address].launch_rec_name and beacon['receiver_name'] != self.flights[flight.address].launch_rec_name:
             # exit early if there is a common rec name and this isn't from it
+            log.info("Skipping aerotow tracking: this beacon isn't from the common receiver")
+            return
+        if beacon['timestamp'] < list(self._beacons.keys())[0]:
+            # exit early if there if this is from the past
+            log.info("Skipping aerotow tracking: this beacon is from before the launch was detected")
             return
 
         if beacon['timestamp'] not in self._beacons.keys():
             # missing timestamps between the new one and the last in the dict are added
             self.count_forwards(beacon['timestamp'])
-        if self._beacons[beacon['timestamp']]:
+        # if self._beacons[beacon['timestamp']]:
+        try:
             # if the correct timestamp exists, just slot the data in
             self._beacons[beacon['timestamp']][flight.address] = {
                     'altitude': beacon['altitude'],
                     'latitude': beacon['latitude'],
                     'longitude': beacon['longitude']
                 }
-        else:
-            # the new metrics are added alongside the new timestamp
-            self._beacons[beacon['timestamp']] = {
-                flight.address: {
-                    'altitude': beacon['altitude'],
-                    'latitude': beacon['latitude'],
-                    'longitude': beacon['longitude']
-                }
-            }
+        except KeyError:
+            log.info('Timestamp {} missing from aerotow beacon keys'.format(beacon['timestamp']))
+            pass
 
         self.flight_beacon_counts[flight.address] += 1
 
         self.check_complete(beacon, self.flights[flight.address])
+
+    def abort(self):
+        # logging.info('[A/T] failure beacons: {}'.format(pprint.pformat(self._beacons)))
+        for flight in self.flights.values():
+            flight.launch_complete = True
+            flight.launch_height = None
 
     def check_complete(self, beacon, beacon_flight):
 
@@ -182,6 +185,8 @@ class Aerotow:
                     self.check_counter_datetime = beacon['timestamp']
                     log.info('Check counter datetime now {}'.format(self.check_counter_datetime))
                     return
+                else:
+                    self.check_failures = 0
 
                 vertical_separation = averages[average_addresses[0]]['altitude'] - averages[average_addresses[1]]['altitude']
                 horizontal_separation = measure_distance.distance(
@@ -230,11 +235,7 @@ class Aerotow:
         elif self.check_failures >= 5:
             # todo: switch to climb rate based a/t tracking
             log.info('abort tracking, too many failures')
-            logging.debug('[A/T] failure beacons: {}'.format(pprint.pformat(self._beacons)))
-            beacon_flight.launch_complete = True
-            beacon_flight.launch_height = 0
-            beacon_flight.tug.launch_complete = True
-            beacon_flight.tug.launch_height = 0
+            self.abort()
 
 # work out which is in front (tug)
 # update the aircraft with their types

@@ -104,9 +104,11 @@ def add_flight(cursor, aircraft_data):
         average_launch_climb_rate,
         max_launch_climb_rate,
         launch_complete,
-        tug_registration
+        tug_registration,
+        aircraft_model,
+        competition_number
     )
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);"""
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);"""
 
     insert_row_data = (
         aircraft_data['nearest_airfield']['name'],
@@ -127,7 +129,9 @@ def add_flight(cursor, aircraft_data):
         aircraft_data['average_launch_climb_rate'],
         aircraft_data['max_launch_climb_rate'],
         aircraft_data['launch_complete'],
-        aircraft_data['tug']
+        aircraft_data['tug'],
+        aircraft_data['aircraft_model'],
+        aircraft_data['competition_number']
     )
 
     cursor.execute(insert_row_sql, insert_row_data)
@@ -299,7 +303,7 @@ def get_raw_beacons_for_address_between(cursor, address, start_datetime, end_dat
     SELECT * FROM `received_beacons`
     WHERE address = %s
     AND timestamp BETWEEN %s AND %s
-    ORDER BY timestamp
+    ORDER BY id
     """
     get_beacons_data = (address, start_datetime, end_datetime)
 
@@ -341,14 +345,13 @@ def get_raw_beacons_between(cursor, start_datetime, end_datetime):
     get_beacons_sql = """
     SELECT *
     FROM `received_beacons`
-    WHERE reference_timestamp
-    BETWEEN %s AND %s
+    WHERE timestamp BETWEEN %s AND %s
+    ORDER by id
     """
     get_beacons_data = (start_datetime, end_datetime)
 
     cursor.execute(get_beacons_sql, get_beacons_data)
     return cursor.fetchall()
-    # BETWEEN '2020-12-01 15:02:55' AND '2020-12-01 15:09:55'
 
 
 def get_airfields(cursor):
