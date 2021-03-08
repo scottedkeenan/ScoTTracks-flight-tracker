@@ -3,10 +3,8 @@ import pprint
 from geopy import distance as measure_distance
 import os
 from statistics import mean
-
-
-
 import logging
+
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 log = logging.getLogger(__name__)
 
