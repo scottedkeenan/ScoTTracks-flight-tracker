@@ -1,7 +1,5 @@
 from collections import deque
 from statistics import mean
-# from aerotow import Aerotow
-import pprint
 import os
 
 import logging
@@ -10,7 +8,7 @@ log = logging.getLogger(__name__)
 
 class Flight:
     def __init__(self, nearest_airfield, address, aircraft_type, altitude, ground_speed, receiver_name, timestamp,
-                 registration, distance_to_nearest_airfield=None, tug=None):
+                 registration, aircraft_model, competition_number, distance_to_nearest_airfield=None, tug=None):
         self.nearest_airfield = nearest_airfield
         self.address = address
         self.aircraft_type = aircraft_type
@@ -19,6 +17,8 @@ class Flight:
         self.receiver_name = receiver_name
         self.timestamp = timestamp # .strftime("%m/%d/%Y, %H:%M:%S")
         self.registration = registration
+        self.aircraft_model = aircraft_model
+        self.competition_number = competition_number
 
         self.takeoff_timestamp = None
         self.takeoff_airfield = None
@@ -65,6 +65,8 @@ class Flight:
             'receiver_name': self.receiver_name,
             'timestamp': self.timestamp,# .strftime("%m/%d/%Y, %H:%M:%S")
             'registration': self.registration,
+            'aircraft_model': self.aircraft_model,
+            'competition_number': self.competition_number,
 
             'takeoff_timestamp': self.takeoff_timestamp,
             'takeoff_airfield': self.takeoff_airfield,

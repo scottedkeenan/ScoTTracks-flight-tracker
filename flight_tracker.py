@@ -3,7 +3,6 @@ import requests
 import json
 import logging
 import os
-import time
 import pprint
 
 import mysql.connector
@@ -40,6 +39,16 @@ def import_device_data():
     # todo: import to database?
     # todo: keep file for reference?
 
+    # "4054A1": {
+    #     "DEVICE_TYPE": "I",
+    #     "DEVICE_ID": "4054A1",
+    #     "AIRCRAFT_MODEL": "ASK-21",
+    #     "REGISTRATION": "G-CHPW",
+    #     "CN": "HPW",
+    #     "TRACKED": "Y",
+    #     "IDENTIFIED": "Y"
+    # }
+
     r = requests.get(config['TRACKER']['device_data_url'])
 
     if r.status_code != 200:
@@ -53,14 +62,16 @@ def import_device_data():
 
     device_data = r.text
 
+    keys = []
     device_dict = {}
 
     for line in device_data.splitlines():
         if line[0] == '#':
-            continue
+            keys = line[1:].split(',')
         else:
-            split_line = line.split(',')
-            device_dict[split_line[1].strip("'")] = split_line[3].strip("'")
+            values = line.split(',')
+            device = {keys[i].strip("'"): values[i].strip("'") for i,key in enumerate(keys)}
+            device_dict[device['DEVICE_ID']] = device
 
     with open('ogn-ddb.json', 'w') as ddb_data:
         ddb_data.write(json.dumps(device_dict))
@@ -199,12 +210,25 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
 
     if beacon['address'] not in tracked_aircraft.keys():
         try:
-            registration = DEVICE_DICT[beacon['address']].upper()
-            if not registration:
-                registration = 'UNKNOWN'
+            device = DEVICE_DICT[beacon['address']]
         except KeyError:
+            log.error('Device dict not found for {}'.format(beacon['address']))
+            device = None
+
+        if device:
+            log.info('Using data in device dict')
+            registration = DEVICE_DICT[beacon['address']]['REGISTRATION'].upper() if DEVICE_DICT[beacon['address']]['REGISTRATION'] else 'UNKNOWN'
+            aircraft_model = DEVICE_DICT[beacon['address']]['AIRCRAFT_MODEL'] if DEVICE_DICT[beacon['address']]['AIRCRAFT_MODEL'] else None
+            competition_number = DEVICE_DICT[beacon['address']]['CN'] if DEVICE_DICT[beacon['address']]['CN'] else None
+        else:
+            log.info('Setting device data to unknowns')
             registration = 'UNKNOWN'
+            aircraft_model = None
+            competition_number = None
+
+
         log.info('Aircraft {}/{} not tracked yet'.format(registration, beacon['address']))
+
         new_flight = Flight(
             None,
             beacon['address'],
@@ -213,15 +237,26 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
             beacon['ground_speed'],
             beacon['receiver_name'],
             beacon['reference_timestamp'],
-            registration
+            registration,
+            aircraft_model,
+            competition_number
         )
+
         detect_airfield(beacon, new_flight)
 
         if beacon['ground_speed'] > float(config['TRACKER']['airborne_detection_speed']) and new_flight.agl() > float(config['TRACKER']['airborne_detection_agl']):
             new_flight.status = 'air'
         else:
             new_flight.status = 'ground'
-        log.info("Starting to track aircraft {} {}km from {} with status {}".format(registration, new_flight.distance_to_nearest_airfield, new_flight.nearest_airfield['nice_name'], new_flight.status))
+        log.info("Starting to track aircraft {}/{} {}km from {} with status {}".format(registration,
+                                                                                       new_flight.address,
+                                                                                       new_flight.distance_to_nearest_airfield,
+                                                                                       new_flight.nearest_airfield['nice_name'],
+                                                                                       new_flight.status))
+        log.info("Extra detail for {}/{}: Model: {}, CN: {}".format(registration,
+                                                                    new_flight.address,
+                                                                    aircraft_model,
+                                                                    competition_number))
         tracked_aircraft[beacon['address']] = new_flight
     else:
         log.debug('Updating tracked aircraft')
@@ -493,28 +528,37 @@ def process_beacon(raw_message):
 log.info("Checking database for active flights")
 db_conn = make_database_connection()
 if db_conn:
-    database_flights = get_currently_airborne_flights(db_conn.cursor())
+    database_flights = get_currently_airborne_flights(db_conn.cursor(dictionary=True))
     db_conn.close()
 else:
     log.error('Unable to retrieve database flights')
     database_flights = {}
 
 for db_flight in database_flights:
-    db_tracked_flight = Flight(db_flight[1], db_flight[2], db_flight[3], db_flight[4], db_flight[5], db_flight[6], db_flight[7], db_flight[8])
-    db_tracked_flight.takeoff_timestamp = db_flight[9]
-    db_tracked_flight.landing_timestamp = db_flight[10]
-    db_tracked_flight.status = db_flight[11]
-    db_tracked_flight.tracking_launch_height = db_flight[13]
-    db_tracked_flight.tracking_launch_start_time = db_flight[14]
-    db_tracked_flight.launch_height = db_flight[12]
-    db_tracked_flight.takeoff_airfield = db_flight[15]
-    db_tracked_flight.landing_airfield = db_flight[16]
-    db_tracked_flight.launch_type = db_flight[17]
-    db_tracked_flight.average_launch_climb_rate = db_flight[18]
-    db_tracked_flight.max_launch_climb_rate = db_flight[19]
-    db_tracked_flight.launch_complete = True if db_flight[20] == 1 else False
+    db_tracked_flight = Flight(db_flight['airfield'],
+                               db_flight['address'],
+                               db_flight['aircraft_type'],
+                               db_flight['altitude'],
+                               db_flight['ground_speed'],
+                               db_flight['receiver_name'],
+                               db_flight['reference_timestamp'],
+                               db_flight['registration'],
+                               db_flight['aircraft_model'],
+                               db_flight['competition_number'])
+    db_tracked_flight.takeoff_timestamp = db_flight['takeoff_timestamp']
+    db_tracked_flight.landing_timestamp = db_flight['landing_timestamp']
+    db_tracked_flight.status = db_flight['status']
+    db_tracked_flight.tracking_launch_height = db_flight['tracking_launch_height']
+    db_tracked_flight.tracking_launch_start_time = db_flight['tracking_launch_start_time']
+    db_tracked_flight.launch_height = db_flight['launch_height']
+    db_tracked_flight.takeoff_airfield = db_flight['takeoff_airfield']
+    db_tracked_flight.landing_airfield = db_flight['landing_airfield']
+    db_tracked_flight.launch_type = db_flight['launch_type']
+    db_tracked_flight.average_launch_climb_rate = db_flight['average_launch_climb_rate']
+    db_tracked_flight.max_launch_climb_rate = db_flight['max_launch_climb_rate']
+    db_tracked_flight.launch_complete = True if db_flight['launch_complete'] == 1 else False
     # todo: other flight as object
-    db_tracked_flight.tug = db_flight[21]
+    db_tracked_flight.tug = db_flight['tug_registration']
 
     tracked_aircraft[db_tracked_flight.address] = db_tracked_flight
 
