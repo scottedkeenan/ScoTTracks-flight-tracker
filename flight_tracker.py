@@ -10,7 +10,7 @@ import mysql.connector
 from ogn.client import AprsClient
 from ogn.parser import parse, ParseError
 
-from flight_tracker_squirreler import add_flight, update_flight, get_currently_airborne_flights, add_beacon, get_beacons_for_address_between, get_raw_beacons_between, get_airfields, get_filters_by_country_codes, get_active_airfields_for_countries, get_raw_beacons_for_address_between
+from flight_tracker_squirreler import add_flight, update_flight, get_currently_airborne_flights, add_beacon, get_beacons_for_address_between, get_raw_beacons_between, get_airfields, get_filters_by_country_codes, get_airfields_for_countries, get_raw_beacons_for_address_between
 
 from charts import draw_alt_graph
 
@@ -121,15 +121,15 @@ if not db_conn:
     exit(1)
 
 AIRFIELD_DATA = {}
-for airfield in get_active_airfields_for_countries(db_conn.cursor(), config['TRACKER']['track_countries'].split(',')):
+for airfield in get_airfields_for_countries(db_conn.cursor(), config['TRACKER']['track_countries'].split(',')):
     airfield_json = {
         'id': airfield[0],
         'name': airfield[1],
-        'nice_name': airfield[2],
-        'latitude': airfield[3],
-        'longitude': airfield[4],
-        'elevation': airfield[5],
-        'launch_type_detection': True if airfield[8] == 1 else False
+        'nice_name': airfield[11] if airfield[11] else airfield[1],
+        'latitude': airfield[4],
+        'longitude': airfield[5],
+        'elevation': airfield[6],
+        # 'launch_type_detection': True if airfield[8] == 1 else False
     }
     AIRFIELD_DATA[(airfield_json['latitude'], airfield_json['longitude'])] = airfield_json
 

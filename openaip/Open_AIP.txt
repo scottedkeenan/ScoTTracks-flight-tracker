@@ -1,0 +1,13 @@
+Use of openAIP Data
+
+openAIP Data can be downloaded and used by anybody for non commercial purposes under the conditions of a special license. openAIP Data is licensed under the CC BY-NC-SA license.
+
+You are free to use, share and adapt openAIP data under the following conditions:
+You must attribute openAIP Data. For example it must be clearly visible to any user that the used data is openAIP data or is based on openAIP data. The follwoing text can be used (translation possible): Data used comes from openAIP. Visit openAIP.net and contribute to better aviation data, free for everyone to use and share.
+You may not use this work for commercial purposes.
+If you alter, transform, or build upon openAIP Data, you may distribute the resulting work only under the same or similar license to this one.
+
+These conditions are a short summary of the full legal code and are not complete. You can find the full license here (http://creativecommons.org/licenses/by-nc-sa/3.0/legalcode)
+
+Commercial use
+Commercial licensing is also possible. For example it is possible to sell openAIP data or to use openAIP Data in a commercial product with minimal attribution and without the share alike restriction. For information on commercial licensing, please contact us via licensing@openaip.net
