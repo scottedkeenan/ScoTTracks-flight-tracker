@@ -129,7 +129,7 @@ for airfield in get_airfields_for_countries(db_conn.cursor(), config['TRACKER'][
         'latitude': airfield[4],
         'longitude': airfield[5],
         'elevation': airfield[6],
-        # 'launch_type_detection': True if airfield[8] == 1 else False
+        'launch_type_detection': True if airfield[17] == 1 else False
     }
     AIRFIELD_DATA[(airfield_json['latitude'], airfield_json['longitude'])] = airfield_json
 
