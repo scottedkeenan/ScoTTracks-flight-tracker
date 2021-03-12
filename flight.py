@@ -142,10 +142,10 @@ class Flight:
             else:
                 if time_known:
                     log.info('Launch type detection disabled for {} at {}'.format(self.registration,
-                                                                                  self.takeoff_airfield))
+                                                                                  self.nearest_airfield['nice_name']))
                 else:
                     log.info('Launch type detection unavailable for {} at {}'.format(self.registration,
-                                                                                  self.takeoff_airfield))
+                                                                                  self.nearest_airfield['nice_name']))
                 self.launch_complete = True
                 self.launch_type = None
         else:
@@ -186,7 +186,7 @@ class Flight:
                 log.error('{} not an initial launch type for {} at {} {}'.format(
                     launch_type,
                     self.registration if self.registration != 'UNKNOWN' else self.address,
-                    self.takeoff_airfield,
+                    self.nearest_airfield['nice_name'],
                     self.timestamp))
         elif self.launch_type:
             if launch_type in updatable_launch_types:

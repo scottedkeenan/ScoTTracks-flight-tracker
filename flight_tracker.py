@@ -184,14 +184,14 @@ def detect_tug(tracked_aircraft, flight):
                     log.info("Tug found: {} is towing {} at {}".format(
                         other_flight.address if other_flight.registration == 'UNKNOWN' else other_flight.registration,
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
-                        flight.takeoff_airfield))
+                        flight.nearest_airfield['nice_name']))
                     flight.launch_type = 'aerotow_glider'
                     other_flight.launch_type = 'aerotow_tug'
                 else:
                     log.info("Aerotow pair found, can't tell which is the tug though: {} is towing with {} at {}".format(
                         other_flight.address if other_flight.registration == 'UNKNOWN' else other_flight.registration,
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
-                        flight.takeoff_airfield))
+                        flight.nearest_airfield['nice_name']))
                     flight.launch_type = 'aerotow_pair'
                     other_flight.launch_type = 'aerotow_pair'
                 aerotow = Aerotow(flight, other_flight)
@@ -374,7 +374,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                             if len(flight.launch_beacon_heights) >= 5:
                                 log.info('Deciding launch type for {} at {} @{} based on gradient: {}'.format(
                                     flight.registration,
-                                    flight.takeoff_airfield,
+                                    flight.nearest_airfield['nice_name'],
                                     flight.takeoff_timestamp,
                                     flight.launch_gradient()
                                 ))
@@ -400,7 +400,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     log.info(
                         '{} launch complete (timeout) at {}! Launch type: {}, Launch height: {}, Launch time: {}, Average vertical: {}'.format(
                             flight.address if flight.registration == 'UNKNOWN' else flight.registration,
-                            flight.takeoff_airfield,
+                            flight.nearest_airfield['nice_name'],
                             flight.launch_type,
                             flight.launch_height * 3.281,
                             time_since_launch,
@@ -414,7 +414,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     log.info(
                         '{} launch complete at {}! Launch type: {}, Launch height: {}, Launch time: {}, Average vertical: {}'.format(
                             flight.address if flight.registration == 'UNKNOWN' else flight.registration,
-                            flight.takeoff_airfield,
+                            flight.nearest_airfield['nice_name'],
                             flight.launch_type,
                             flight.launch_height * 3.281,
                             time_since_launch,
@@ -455,7 +455,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                             log.info(
                                 '{} launch complete at {}! Launch type: {}, Launch height: {}, Launch time: {}, Average vertical: {}, Recent Average Vertical: {}, Difference: {}, Sink/lift: {}'.format(
                                     flight.address if flight.registration == 'UNKNOWN' else flight.registration,
-                                    flight.takeoff_airfield,
+                                    flight.nearest_airfield['nice_name'],
                                     flight.launch_type,
                                     flight.launch_height * 3.281,
                                     time_since_launch,
@@ -491,7 +491,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
 
                     log.info("Updating aircraft {} as landed at {}".format(
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
-                        flight.landing_airfield))
+                        flight.nearest_airfield['name']))
 
                     log.info('Landing data... ground_speed: {}, agl: {}, climb_rate: {}'.format(beacon['ground_speed'], flight.agl(), beacon['climb_rate']))
 
@@ -639,7 +639,7 @@ log.info("=========")
 # comment out the live import above
 
 db_conn = make_database_connection()
-beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-01-22 10:00:00', '2022-12-22 18:00:00')
+beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-03-11 10:00:00', '2022-12-22 18:00:00')
 # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True), '2020-12-29 08:40:55', '2021-12-31 23:00:00')
 # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True), '2021-02-21 00:00:00', '2022-02-18 23:15:00')
 
