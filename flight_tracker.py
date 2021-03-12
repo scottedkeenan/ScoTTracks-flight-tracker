@@ -484,7 +484,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     # todo: landout detection
                     flight.status = 'ground'
                     flight.landing_timestamp = beacon['timestamp']
-                    flight.landing_airfield = flight.nearest_airfield['name']
+                    flight.landing_airfield = flight.nearest_airfield['id']
 
                     if flight.takeoff_timestamp and not flight.launch_complete:
                         flight.launch_type = 'winch l/f'

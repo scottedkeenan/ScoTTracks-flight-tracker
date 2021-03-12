@@ -34,6 +34,7 @@ airfield_data_files = [
 
 
 AIRFIELD_DATA = {}
+id = 1
 
 for file_name in airfield_data_files:
 
@@ -53,6 +54,7 @@ for file_name in airfield_data_files:
             icao = 'null'
 
         airport_dict = {
+            'id': id,
             'name': airport.find('NAME').text,
             'country_code': airport.find('COUNTRY').text,
             'icao': icao,
@@ -66,7 +68,8 @@ for file_name in airfield_data_files:
         # pprint.pprint(airport_dict)
         import json
 
-        print("(null,'{}','{}',{},{},{},{},'{}','{}'),".format(
+        print("({},'{}','{}',{},{},{},{},'{}','{}'),".format(
+            airport_dict['id'],
             airport_dict['name'],
             airport_dict['country_code'],
             airport_dict['icao'],
@@ -78,6 +81,7 @@ for file_name in airfield_data_files:
         ))
 
         AIRFIELD_DATA[(airport_dict['latitude'], airport_dict['longitude'])] = airport_dict
+        id += 1
 
 print(len(AIRFIELD_DATA))
 print('='*100)
@@ -121,11 +125,11 @@ for club in GLIDING_CLUBS:
     if distance_to_nearest > 10:
         # print('Flagging {} | {}'.format(club['name'], distance_to_nearest))
         print('UPDATE `sites`')
-        print("SET `airfield_name` = null")
+        print("SET `airfield_id` = null")
         print("WHERE `name` = '{}';".format(club['name']))
         print()
     print('UPDATE `sites`')
-    print("SET `airfield_name` = '{}'".format(closest_airfield['name']))
+    print("SET `airfield_id` = '{}'".format(closest_airfield['id']))
     print("WHERE `name` = '{}';".format(club['name']))
     print()
     # print(("nearest to {} is: {} at {}".format(club['name'], closest_airfield['name'], distance_to_nearest)))

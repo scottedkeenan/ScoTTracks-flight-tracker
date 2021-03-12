@@ -130,7 +130,7 @@ class Flight:
     def launch(self, time_known=True):
         if self.status == 'ground':
             self.status = 'air'
-            self.takeoff_airfield = self.nearest_airfield['name']
+            self.takeoff_airfield = self.nearest_airfield['id']
             self.takeoff_timestamp = self.timestamp
             self.takeoff_detection_height = self.agl()
             # if time_known:
