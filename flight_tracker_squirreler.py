@@ -369,7 +369,7 @@ def get_airfields_for_countries(cursor, country_codes):
 
     get_airfields_sql = """
     SELECT * FROM `airfields`
-    LEFT JOIN sites ON airfields.name = sites.airfield_name
+    LEFT JOIN sites ON airfields.id = sites.airfield_id
     WHERE `airfields`.country_code IN ({})
     """.format(placeholders)
 
