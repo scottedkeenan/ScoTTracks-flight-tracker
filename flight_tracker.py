@@ -528,8 +528,8 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
 import time
 
 def process_beacon(raw_message):
-    log.info('Beacon process start')
-    start = time.time()
+    # log.info('Beacon process start')
+    # start = time.time()
     try:
         beacon = parse(raw_message)
         try:
@@ -547,7 +547,7 @@ def process_beacon(raw_message):
     except ParseError as e:
         log.error('Parse error: {}'.format(e))
     end = time.time()
-    log.info('Beacon took {} to process'.format(end - start))
+    # log.info('Beacon took {} to process'.format(end - start))
 
 
 log.info("Checking database for active flights")
