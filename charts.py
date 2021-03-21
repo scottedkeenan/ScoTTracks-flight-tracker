@@ -124,22 +124,23 @@ def draw_alt_graph(cursor, flight):
 #
 #     if data:
 #         times = []
-#         y1 = []
+#         receivers = {}
 #         y2 = []
 #
 #         for row in data:
-#             times.append((row[0]))
-#             y1.append((float(row[1])))
-#             y2.append((float(row[2])))
+#             times.append((row['timestamp']))
+#             if row['receiver_name'] not in receivers.keys():
+#                 receivers[row['receiver_name']] = {
+#                     'times': [(row['timestamp'])],
+#                     'alts': [(float(row['altitude']))]
+#                 }
+#             else:
+#                 receivers[row['receiver_name']]['alts'].append((float(row['altitude'])))
+#                 receivers[row['receiver_name']]['times'].append((row['timestamp']))
+#             y2.append((float(row['ground_speed'])))
 #
-#             if float(row[1]) < lowest_alt:
-#
-#                 print('=========')
-#                 lowest_alt = float(row[1])
-#                 speed = row[2]
-#                 print(lowest_alt)
-#                 print(speed)
-#                 print('=========')
+#         import pprint
+#         pprint.pprint(receivers)
 #
 #         time_num = matplotlib.dates.date2num(times)
 #
@@ -151,15 +152,20 @@ def draw_alt_graph(cursor, flight):
 #         locator = mdates.DayLocator()
 #         ax.xaxis.set_major_locator(locator)
 #
-#         plt.plot_date(time_num, y1, linestyle='-', linewidth=1.0, label='Altitude', marker='.', ms = 3, mec = 'r', mfc = 'r')
-#         plt.plot_date(time_num, y2, linestyle='-', linewidth=1.0, label='Ground Speed', marker=None)
+#         for r in receivers.keys():
+#             plt.plot_date(matplotlib.dates.date2num(receivers[r]['times']), receivers[r]['alts'], linestyle='-', linewidth=0.3, label=r, ms = 0.3, mec = 'r', mfc = 'r')
+#         plt.plot_date(time_num, y2, linestyle='-', linewidth=0.3, label='Ground Speed', marker=None)
 #         plt.xlabel('time')
 #         plt.ylabel('Altitude in m / speed in kph')
 #         # plt.title('Interesting Graph\nCheck it out')
-#         plt.legend()
+#         lgd = plt.legend(bbox_to_anchor=(1.1, 1.1), bbox_transform=ax.transAxes)
+#
 #         plt.savefig('{}/{}-{}.png'.format(chart_directory,
 #                                           address ,
-#                                           times[0].strftime("%Y-%m-%d-%H-%M-%S")))
+#                                           times[0].strftime("%Y-%m-%d-%H-%M-%S")),
+#                     dpi=500,
+#                     bbox_extra_artists=(lgd,),
+#                     bbox_inches='tight')
 #         plt.clf()
 #         plt.cla()
 #         plt.close()
@@ -189,14 +195,15 @@ def draw_alt_graph(cursor, flight):
 #         return make_database_connection(retry_counter)
 #
 # db_conn = make_database_connection()
-# data = get_beacons_for_address_between(db_conn.cursor(), '4057F5', '2021-03-05 09:51:11', '2021-03-05 10:26:53')
-# for d in data:
-#     print(d)
+# # data = get_beacons_for_address_between(db_conn.cursor(), '4057F5', '2021-03-05 09:51:11', '2021-03-05 10:26:53')
+# # for d in data:
+# #     print(d)
 #
 # def myconverter(o):
 #     if isinstance(o, datetime.datetime):
 #         return o.__str__()
 #
 # import json
-# print(json.dumps(data, default = myconverter))
-# # draw_alt_graph_for_address_between(db_conn.cursor(), 'DDE1EC', '2021-02-18 11:56:00', '2021-02-18 12:15:00', './public_html/graphs/debug')
+# # print(json.dumps(data, default = myconverter))
+# draw_alt_graph_for_address_between(db_conn.cursor(dictionary=True), 'DDE6DD', '2021-03-05 09:18:00', '2021-03-05 09:45:00', './public_html/graphs/debug')
+# # draw_alt_graph_for_address_between(db_conn.cursor(dictionary=True), 'DF0D62', '2021-03-07 10:19:00', '2021-03-07 10:30:00', './public_html/graphs/debug')

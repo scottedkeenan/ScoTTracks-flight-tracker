@@ -314,7 +314,7 @@ def get_raw_beacons_for_address_between(cursor, address, start_datetime, end_dat
 def get_beacons_for_address_between(cursor, address, start_datetime, end_datetime):
     # print("Getting beacons between {} and {}".format(start_datetime, end_datetime))
     get_beacons_sql = """
-    SELECT timestamp, altitude, ground_speed
+    SELECT timestamp, altitude, ground_speed, receiver_name
     FROM `received_beacons`
     WHERE address = %s
     AND timestamp BETWEEN %s AND %s
@@ -363,18 +363,68 @@ def get_airfields(cursor):
     return cursor.fetchall()
 
 
-def get_active_airfields_for_countries(cursor, country_codes):
+def get_airfields_for_countries(cursor, country_codes):
     placeholder = '%s'
     placeholders = ', '.join(placeholder for unused in country_codes)
 
     get_airfields_sql = """
-    SELECT *
-    FROM `airfields`
-    WHERE is_active = TRUE
-    AND country_code IN (%s);
-    """ % placeholders
+    SELECT * FROM `airfields`
+    LEFT JOIN sites ON airfields.id = sites.airfield_id
+    WHERE `airfields`.country_code IN ({})
+    """.format(placeholders)
 
     cursor.execute(get_airfields_sql, country_codes)
+    return cursor.fetchall()
+
+def get_sites(cursor):
+    get_sites_sql = """
+    SELECT *
+    FROM `sites`
+    """
+    cursor.execute(get_sites_sql)
+    return cursor.fetchall()
+
+
+def get_sites_with_no_airfield(cursor):
+    get_sites_sql = """
+    SELECT *
+    FROM `sites`
+    WHERE `airfield_name` IS NULL;
+    """
+    cursor.execute(get_sites_sql)
+    return cursor.fetchall()
+
+
+def get_airfields_sites_for_countries(cursor, country_codes):
+    placeholder = '%s'
+    placeholders = ', '.join(placeholder for unused in country_codes)
+
+    get_sites_sql = """
+    SELECT * FROM sites
+    LEFT JOIN airfields ON airfields.name = sites.airfield_name
+    WHERE `sites`.country_code IN ({0})
+    UNION
+    SELECT * FROM sites
+    RIGHT JOIN airfields ON airfields.name = sites.airfield_name
+    WHERE `sites`.country_code IN ({0})  
+    """.format(placeholders)
+
+    cursor.execute(get_sites_sql, country_codes + country_codes)
+    return cursor.fetchall()
+
+
+def get_active_sites_for_countries(cursor, country_codes):
+    placeholder = '%s'
+    placeholders = ', '.join(placeholder for unused in country_codes)
+
+    get_sites_sql = """
+    SELECT * FROM `sites` 
+    LEFT JOIN airfields ON sites.airfield_name=airfields.name
+    WHERE is_active = TRUE
+    AND sites.country_code IN (%s)
+    """ % placeholders
+
+    cursor.execute(get_sites_sql, country_codes)
     return cursor.fetchall()
 
 
