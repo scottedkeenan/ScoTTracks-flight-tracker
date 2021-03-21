@@ -48,7 +48,7 @@ from flight_tracker_squirreler import get_raw_beacons_between, get_raw_beacons_f
 
 db_conn = make_database_connection()
 # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-12-24 07:00:00', '2020-12-24 18:00:00')
-beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD8E6A', '2021-02-20 12:15:00', '2021-02-20 12:18:00')
+beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DF0D62', '2021-03-07 10:19:00', '2021-03-07 10:30:00')
 # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD5133', '2020-12-22 15:44:33', '2020-12-22 16:08:56')
 # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), '405612', '2020-12-22 15:35:59', '2020-12-22 15:52:17')
 
@@ -87,21 +87,22 @@ def detect_airfield(beacon):
     distance_to_nearest = measure_distance.distance(
         [float(closest_airfield['latitude']), float(closest_airfield['longitude'])],
         (beacon['latitude'], beacon['longitude'])).km
-    log.debug(("nearest is: {} at {}".format(closest_airfield['name'], distance_to_nearest)))
-    return closest_airfield['nice_name'], distance_to_nearest
+    log.debug(("nearest is: {} at {} with elevation of {}".format(closest_airfield['name'], distance_to_nearest, closest_airfield['elevation'])))
+    return closest_airfield['nice_name'], distance_to_nearest, closest_airfield['elevation']
 
-FE = 55
 status = None
 last_flight_timestamp = None
 
 
-def agl(nh):
-    return nh - FE
+def agl(nh, fe):
+    return nh - fe
 
 log.info(len(beacons))
 
 
 for beacon in beacons:
+
+    log.info('ALT: {}'.format(beacon['altitude']))
 
     if last_flight_timestamp:
         log.info(last_flight_timestamp <= beacon['timestamp'])
@@ -109,13 +110,16 @@ for beacon in beacons:
     log.info('='*10)
     log.info(beacon['timestamp'])
     log.info(status)
-    closest, dist = detect_airfield(beacon)
+    closest, dist, elevation = detect_airfield(beacon)
+
+    log.info('ELEV: {}'.format(elevation))
+    log.info('{},{}'.format(beacon['latitude'], beacon['longitude']))
 
     takeoff = beacon['ground_speed'] > float(config['TRACKER']['airborne_detection_speed']) \
-        and agl(beacon['altitude']) > float(config['TRACKER']['airborne_detection_agl'])
+        and agl(beacon['altitude'], elevation) > float(config['TRACKER']['airborne_detection_agl'])
 
     landing = beacon['ground_speed'] < float(config['TRACKER']['landing_detection_speed']) \
-        and agl(beacon['altitude']) < float(config['TRACKER']['landing_detection_agl']) \
+        and agl(beacon['altitude'], elevation) < float(config['TRACKER']['landing_detection_agl']) \
         and dist < float(config['TRACKER']['airfield_detection_radius']) \
         and beacon['climb_rate'] < float(config['TRACKER']['landing_detection_climb_rate'])
 
@@ -127,14 +131,14 @@ for beacon in beacons:
     log.info('Takeoff? {} | Speed: {}, {} | AGL: {}, {} '.format(
         takeoff,
         beacon['ground_speed'], beacon['ground_speed'] > float(config['TRACKER']['landing_detection_speed']),
-        agl(beacon['altitude']), agl(beacon['altitude']) > float(config['TRACKER']['landing_detection_agl']),
+        agl(beacon['altitude'], elevation), agl(beacon['altitude'], elevation) > float(config['TRACKER']['landing_detection_agl']),
     ))
 
 
     log.info('Landing? {} | Speed: {}, {} | AGL: {}, {} | Dist ({}): {} {} | Climb: {} {}'.format(
         landing,
         beacon['ground_speed'], beacon['ground_speed'] < float(config['TRACKER']['landing_detection_speed']),
-        agl(beacon['altitude']), agl(beacon['altitude']) < float(config['TRACKER']['landing_detection_agl']),
+        agl(beacon['altitude'], elevation), agl(beacon['altitude'], elevation) < float(config['TRACKER']['landing_detection_agl']),
         closest, dist, dist < float(config['TRACKER']['airfield_detection_radius']),
         beacon['climb_rate'], beacon['climb_rate'] < float(config['TRACKER']['landing_detection_climb_rate'])))
 
