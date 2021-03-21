@@ -116,12 +116,21 @@ def make_database_connection(retry_counter=0):
         return make_database_connection(retry_counter)
 
 
+def get_cursor(db_connection):
+    try:
+        db_connection.ping(reconnect=True, attempts=3, delay=5)
+    except mysql.connector.Error as err:
+        # reconnect your cursor as you did in __init__ or wherever
+        connection = make_database_connection()
+    return db_connection.cursor()
+
+
 db_conn = make_database_connection()
 if not db_conn:
     exit(1)
 
 AIRFIELD_DATA = {}
-for airfield in get_airfields_for_countries(db_conn.cursor(), config['TRACKER']['track_countries'].split(',')):
+for airfield in get_airfields_for_countries(get_cursor(db_conn), config['TRACKER']['track_countries'].split(',')):
     airfield_json = {
         'id': airfield[0],
         'name': airfield[1],
@@ -206,13 +215,13 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
     log.debug("track aircraft!")
     # log.info(beacon)
 
-    db_conn = make_database_connection()
+    # db_conn = make_database_connection()
     if not db_conn:
         log.error("Unable to connect to database, skipping beacon")
         return
 
     if save_beacon:
-        add_beacon(db_conn.cursor(), beacon)
+        add_beacon(get_cursor(db_conn), beacon)
 
     try:
         beacon['altitude'] = beacon['altitude'] + BEACON_CORRECTIONS[beacon['receiver_name']]
@@ -300,7 +309,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
                         flight.nearest_airfield['name'], flight.timestamp))
                     flight.launch()
-                    add_flight(db_conn.cursor(), flight.to_dict())
+                    add_flight(get_cursor(db_conn), flight.to_dict())
                     db_conn.commit()
                 #2.5 naut. miles
                 elif flight.distance_to_nearest_airfield < 4.63:
@@ -317,7 +326,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     # prevent launch height tracking
                     flight.launch_height = None
                     flight.launch_complete = True
-                    add_flight(db_conn.cursor(), flight.to_dict())
+                    add_flight(get_cursor(db_conn), flight.to_dict())
                     db_conn.commit()
                 # 2.5 naut. miles
                 else:
@@ -335,7 +344,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     flight.takeoff_airfield = 'UNKNOWN'
                     flight.launch_height = None
                     flight.launch_complete = True
-                    add_flight(db_conn.cursor(), flight.to_dict())
+                    add_flight(get_cursor(db_conn), flight.to_dict())
                     db_conn.commit()
 
         elif flight.status == 'air':
@@ -406,7 +415,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                             time_since_launch,
                             flight.average_launch_climb_rate
                         ))
-                    update_flight(db_conn.cursor(), flight.to_dict())
+                    update_flight(get_cursor(db_conn), flight.to_dict())
                     db_conn.commit()
 
                 if flight.launch_type == 'winch' and time_since_launch > launch_tracking_times['winch']:
@@ -421,15 +430,15 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                             flight.average_launch_climb_rate,
                         ))
                     log.info('Launch gradients: {}'.format(flight.launch_gradients))
-                    update_flight(db_conn.cursor(), flight.to_dict())
+                    update_flight(get_cursor(db_conn), flight.to_dict())
                     db_conn.commit()
 
                 if flight.launch_type in ['aerotow_glider', 'aerotow_pair', 'aerotow_tug']:
                     try:
                         flight.update_aerotow(beacon)
-                        update_flight(db_conn.cursor(), flight.to_dict())
+                        update_flight(get_cursor(db_conn), flight.to_dict())
                         db_conn.commit()
-                        update_flight(db_conn.cursor(), flight.tug.to_dict())
+                        update_flight(get_cursor(db_conn), flight.tug.to_dict())
                         db_conn.commit()
                     except AttributeError as err:
                             log.error(err)
@@ -464,7 +473,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                                     recent_average_diff,
                                     sl
                                 ))
-                            update_flight(db_conn.cursor(), flight.to_dict())
+                            update_flight(get_cursor(db_conn), flight.to_dict())
                             db_conn.commit()
                     except StatisticsError:
                         log.info("No data to average, skipping")
@@ -496,10 +505,10 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     log.info('Landing data... ground_speed: {}, agl: {}, climb_rate: {}'.format(beacon['ground_speed'], flight.agl(), beacon['climb_rate']))
 
                     if flight.takeoff_timestamp:
-                        update_flight(db_conn.cursor(), flight.to_dict())
+                        update_flight(get_cursor(db_conn), flight.to_dict())
                         db_conn.commit()
                     else:
-                        add_flight(db_conn.cursor(), flight.to_dict())
+                        add_flight(get_cursor(db_conn), flight.to_dict())
                         db_conn.commit()
                     log.info('Aircraft {} flew from {} to {}'.format(
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
@@ -507,7 +516,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                         flight.landing_timestamp))
                     if flight.takeoff_timestamp and flight.landing_timestamp:
                         draw_alt_graph(
-                            db_conn.cursor(),
+                            get_cursor(db_conn),
                             flight
                         )
                     tracked_aircraft.pop(flight.address)
@@ -523,13 +532,13 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
     for flight in tracked_aircraft:
         log.debug(pprint.pformat(tracked_aircraft[flight].to_dict()))
     log.debug('End Tracked aircraft {} {}'.format(len(tracked_aircraft), '======================'))
-    db_conn.close()
+    # db_conn.close()
 
 import time
 
 def process_beacon(raw_message):
-    # log.info('Beacon process start')
-    # start = time.time()
+    log.info('Beacon process start')
+    start = time.time()
     try:
         beacon = parse(raw_message)
         try:
@@ -547,14 +556,13 @@ def process_beacon(raw_message):
     except ParseError as e:
         log.error('Parse error: {}'.format(e))
     end = time.time()
-    # log.info('Beacon took {} to process'.format(end - start))
+    log.info('Beacon took {} to process'.format(end - start))
 
 
 log.info("Checking database for active flights")
 db_conn = make_database_connection()
 if db_conn:
     database_flights = get_currently_airborne_flights(db_conn.cursor(dictionary=True))
-    db_conn.close()
 else:
     log.error('Unable to retrieve database flights')
     database_flights = {}
@@ -595,9 +603,7 @@ log.info("=========")
 # LIVE get beacons
 
 track_countries = config['TRACKER']['track_countries'].split(',')
-db_conn = make_database_connection()
-filters = get_filters_by_country_codes(db_conn.cursor(), track_countries)
-db_conn.close()
+filters = get_filters_by_country_codes(get_cursor(db_conn), track_countries)
 aprs_filter = ' '.join(filters)
 
 
@@ -627,9 +633,10 @@ while failures < 99:
         failures += 1
     except KeyboardInterrupt:
         log.info('Keyboard interrupt!')
+        db_conn.close()
         log.info('Stop OGN gateway')
         break
-
+db_conn.close()
 log.error('Exited with {} failures'.format(failures))
 
 
