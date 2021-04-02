@@ -216,9 +216,9 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
 
     try:
         beacon['altitude'] = beacon['altitude'] + BEACON_CORRECTIONS[beacon['receiver_name']]
-        log.debug('Correction applied for {} beacon'.format(beacon['receiver_name']))
+        log.info('Correction applied for {} beacon. Alt: {}'.format(beacon['receiver_name'], beacon['altitude']))
     except KeyError:
-        log.debug('No correction to apply')
+        log.info('No correction to apply for {} beacon. Alt: {}'.format(beacon['receiver_name'], beacon['altitudeq']))
         pass
 
     if beacon['address'] in tracked_aircraft.keys() and check_date:
