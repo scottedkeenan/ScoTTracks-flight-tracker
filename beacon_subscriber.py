@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 mq_connection = pika.BlockingConnection(pika.ConnectionParameters(config['TRACKER']['rabbit_mq_host']))
 mq_channel = mq_connection.channel()
 
-beacon_count = 0
+# beacon_count = 0
 
 
 def json_serial(obj):
@@ -45,10 +45,10 @@ def queue_beacon(beacon):
     mq_channel.basic_publish(exchange='flight_tracker',
                              routing_key='received_beacons',
                              body=beacon_data)
-    logging.info(' [x] Sent {}'.format(beacon))
-    global beacon_count
-    beacon_count += 1
-    logging.info('Beacon count: {}'.format(beacon_count))
+    # logging.info(' [x] Sent {}'.format(beacon))
+    # global beacon_count
+    # beacon_count += 1
+    # logging.info('Beacon count: {}'.format(beacon_count))
 
 
 def filter_queue_beacon(raw_message):
@@ -82,8 +82,8 @@ if not db_conn:
     exit(1)
 filters = get_filters_by_country_codes(db_conn.cursor(), track_countries)
 db_conn.close()
-aprs_filter = ' '.join(filters)
-
+# aprs_filter = ' '.join(filters)
+aprs_filter = ''
 
 def connect_to_ogn_and_run(filter_string):
     if len(filter_string.split(' ')) > 9:

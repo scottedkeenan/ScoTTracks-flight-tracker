@@ -207,7 +207,7 @@ def detect_tug(tracked_aircraft, flight):
 
 
 def track_aircraft(beacon, save_beacon=True, check_date=True):
-    log.info("track aircraft!")
+    # log.info("track aircraft!")
     # log.info(pprint.pformat(beacon))
 
     reference_timestamp = datetime(*time.strptime(beacon['reference_timestamp'], '%Y-%m-%dT%H:%M:%S.%f')[:6])
@@ -228,7 +228,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
         beacon['altitude'] = beacon['altitude'] + BEACON_CORRECTIONS[beacon['receiver_name']]
         log.info('Correction applied for {} beacon. Alt: {}'.format(beacon['receiver_name'], beacon['altitude']))
     except KeyError:
-        log.info('No correction to apply for {} beacon. Alt: {}'.format(beacon['receiver_name'], beacon['altitude']))
+        # log.info('No correction to apply for {} beacon. Alt: {}'.format(beacon['receiver_name'], beacon['altitude']))
         pass
 
     if beacon['address'] in tracked_aircraft.keys() and check_date:
@@ -534,7 +534,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
     # log.info('Tracked aircraft =========================')
     # for flight in tracked_aircraft:
     #     log.info(pprint.pformat(tracked_aircraft[flight].to_dict()))
-    log.info('End Tracked aircraft {} {}'.format(len(tracked_aircraft), '======================'))
+    # log.info('End Tracked aircraft {} {}'.format(len(tracked_aircraft), '======================'))
     db_conn.close()
 
 import time
@@ -542,9 +542,9 @@ import time
 beacon_count = 0
 
 def process_beacon(ch, method, properties, body):
-    log.info('Beacon process start')
-    global  beacon_count
-    start = time.time()
+    # log.info('Beacon process start')
+    # global  beacon_count
+    # start = time.time()
     try:
         beacon = json.loads(body)
         try:
@@ -552,7 +552,6 @@ def process_beacon(ch, method, properties, body):
                 log.debug('Aircraft beacon received')
                 if beacon['aircraft_type'] in [1, 2]:
                     try:
-                        logging.info('going to track now')
                         track_aircraft(beacon)
                     except TypeError as e:
                         log.info('Type error while tracking: {}'.format(e))
@@ -564,9 +563,9 @@ def process_beacon(ch, method, properties, body):
     except ParseError as e:
         log.error('Parse error: {}'.format(e))
     end = time.time()
-    beacon_count += 1
-    log.info('Beacon took {} to process'.format(end - start))
-    log.info('Beacon count: {}'.format(beacon_count))
+    # beacon_count += 1
+    # log.info('Beacon took {} to process'.format(end - start))
+    # log.info('Beacon count: {}'.format(beacon_count))
 
 
 
