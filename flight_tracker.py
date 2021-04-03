@@ -5,6 +5,10 @@ import logging
 import os
 import pprint
 
+import pika
+
+import sys
+
 import mysql.connector
 
 from ogn.client import AprsClient
@@ -203,8 +207,14 @@ def detect_tug(tracked_aircraft, flight):
 
 
 def track_aircraft(beacon, save_beacon=True, check_date=True):
-    log.debug("track aircraft!")
-    # log.info(beacon)
+    log.info("track aircraft!")
+    # log.info(pprint.pformat(beacon))
+
+    reference_timestamp = datetime(*time.strptime(beacon['reference_timestamp'], '%Y-%m-%dT%H:%M:%S.%f')[:6])
+    beacon['reference_timestamp'] = reference_timestamp
+
+    timestamp = datetime(*time.strptime(beacon['timestamp'], '%Y-%m-%dT%H:%M:%S')[:6])
+    beacon['timestamp'] = timestamp
 
     db_conn = make_database_connection()
     if not db_conn:
@@ -218,7 +228,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
         beacon['altitude'] = beacon['altitude'] + BEACON_CORRECTIONS[beacon['receiver_name']]
         log.info('Correction applied for {} beacon. Alt: {}'.format(beacon['receiver_name'], beacon['altitude']))
     except KeyError:
-        log.info('No correction to apply for {} beacon. Alt: {}'.format(beacon['receiver_name'], beacon['altitudeq']))
+        log.info('No correction to apply for {} beacon. Alt: {}'.format(beacon['receiver_name'], beacon['altitude']))
         pass
 
     if beacon['address'] in tracked_aircraft.keys() and check_date:
@@ -257,7 +267,8 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
             beacon['altitude'],
             beacon['ground_speed'],
             beacon['receiver_name'],
-            beacon['reference_timestamp'],
+            # beacon['reference_timestamp'],
+            reference_timestamp,
             registration,
             aircraft_model,
             competition_number
@@ -278,6 +289,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                                                                     new_flight.address,
                                                                     aircraft_model,
                                                                     competition_number))
+
         tracked_aircraft[beacon['address']] = new_flight
     else:
         log.debug('Updating tracked aircraft')
@@ -288,7 +300,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
         last_flight_timestamp = flight.timestamp
         flight.update(beacon)
 
-        if flight.status == 'ground' and last_flight_timestamp <= beacon['timestamp']:
+        if flight.status == 'ground' and last_flight_timestamp <= timestamp:
 
             if beacon['ground_speed'] > float(config['TRACKER']['airborne_detection_speed']) \
             and flight.agl() > float(config['TRACKER']['airborne_detection_agl']):
@@ -478,12 +490,12 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                 log.info("Aircraft {} detected below airborne detection criteria".format(
                     flight.address if flight.registration == 'UNKNOWN' else flight.registration))
 
-                if last_flight_timestamp <= beacon['timestamp']:
+                if last_flight_timestamp <= timestamp:
 
                     # Aircraft landing detected
                     # todo: landout detection
                     flight.status = 'ground'
-                    flight.landing_timestamp = beacon['timestamp']
+                    flight.landing_timestamp = timestamp
                     flight.landing_airfield = flight.nearest_airfield['id']
 
                     if flight.takeoff_timestamp and not flight.launch_complete:
@@ -519,27 +531,32 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                 #                                                                                 flight.agl(),
                 #                                                                                 beacon['climb_rate']))
 
-    log.debug('Tracked aircraft =========================')
-    for flight in tracked_aircraft:
-        log.debug(pprint.pformat(tracked_aircraft[flight].to_dict()))
-    log.debug('End Tracked aircraft {} {}'.format(len(tracked_aircraft), '======================'))
+    # log.info('Tracked aircraft =========================')
+    # for flight in tracked_aircraft:
+    #     log.info(pprint.pformat(tracked_aircraft[flight].to_dict()))
+    log.info('End Tracked aircraft {} {}'.format(len(tracked_aircraft), '======================'))
     db_conn.close()
 
 import time
 
-def process_beacon(raw_message):
-    # log.info('Beacon process start')
-    # start = time.time()
+beacon_count = 0
+
+def process_beacon(ch, method, properties, body):
+    log.info('Beacon process start')
+    global  beacon_count
+    start = time.time()
     try:
-        beacon = parse(raw_message)
+        beacon = json.loads(body)
         try:
             if beacon['beacon_type'] in ['aprs_aircraft', 'flarm']:
                 log.debug('Aircraft beacon received')
                 if beacon['aircraft_type'] in [1, 2]:
                     try:
+                        logging.info('going to track now')
                         track_aircraft(beacon)
                     except TypeError as e:
                         log.info('Type error while tracking: {}'.format(e))
+                        raise
                 else:
                     log.debug("Not a glider or tug")
         except KeyError as e:
@@ -547,7 +564,10 @@ def process_beacon(raw_message):
     except ParseError as e:
         log.error('Parse error: {}'.format(e))
     end = time.time()
-    # log.info('Beacon took {} to process'.format(end - start))
+    beacon_count += 1
+    log.info('Beacon took {} to process'.format(end - start))
+    log.info('Beacon count: {}'.format(beacon_count))
+
 
 
 log.info("Checking database for active flights")
@@ -594,66 +614,38 @@ log.info("=========")
 
 # LIVE get beacons
 
-track_countries = config['TRACKER']['track_countries'].split(',')
-db_conn = make_database_connection()
-filters = get_filters_by_country_codes(db_conn.cursor(), track_countries)
-db_conn.close()
-aprs_filter = ' '.join(filters)
+# def connect_to_ogn_and_run(filter_string):
+#     if len(filter_string.split(' ')) > 9:
+#         log.error("Too many aprs filters")
+#     else:
+#         log.info('Connecting to OGN gateway')
+#         client = AprsClient(aprs_user='N0CALL', aprs_filter=aprs_filter)
+#         client.connect()
+#         try:
+#             client.run(callback=process_beacon, autoreconnect=True)
+#         except KeyboardInterrupt:
+#             client.disconnect()
+#             raise
+#         except AttributeError as err:
+#             log.error(err)
 
 
-def connect_to_ogn_and_run(filter_string):
-    if len(filter_string.split(' ')) > 9:
-        log.error("Too many aprs filters")
-    else:
-        log.info('Connecting to OGN gateway')
-        client = AprsClient(aprs_user='N0CALL', aprs_filter=aprs_filter)
-        client.connect()
-        try:
-            client.run(callback=process_beacon, autoreconnect=True)
-        except KeyboardInterrupt:
-            client.disconnect()
-            raise
-        except AttributeError as err:
-            log.error(err)
+def main():
+    connection = pika.BlockingConnection(pika.ConnectionParameters(config['TRACKER']['rabbit_mq_host']))
+    channel = connection.channel()
 
+    channel.basic_consume(queue='received_beacons',
+                      auto_ack=True,
+                      on_message_callback=process_beacon)
 
-failures = 0
-while failures < 99:
+    channel.start_consuming()
+
+if __name__ == '__main__':
     try:
-        connect_to_ogn_and_run(aprs_filter)
-    except ConnectionRefusedError as ex:
-        log.error('Connection error, retrying')
-        log.error(ex)
-        failures += 1
+        main()
     except KeyboardInterrupt:
-        log.info('Keyboard interrupt!')
-        log.info('Stop OGN gateway')
-        break
-
-log.error('Exited with {} failures'.format(failures))
-
-
-
-# Debug Get beacons from DB
-
-# comment out the live import above
-
-# db_conn = make_database_connection()
-# beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-03-11 10:00:00', '2022-12-22 18:00:00')
-# # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True), '2020-12-29 08:40:55', '2021-12-31 23:00:00')
-# # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True), '2021-02-21 00:00:00', '2022-02-18 23:15:00')
-#
-# # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2021-01-03 10:00:00', '2022-01-10 18:00:00')
-# # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD51CC', '2020-12-22 15:27:19', '2020-12-22 15:33:15')
-# # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD5133', '2020-12-22 15:44:33', '2020-12-22 16:08:56')
-# # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DF0D62', '2020-03-07 09:46:00', '2021-03-014 18:00:00')
-#
-#
-# print(len(beacons))
-#
-# for beacon in beacons:
-#     # log.warning(beacon)
-#     if beacon['aircraft_type'] in [1,2]:
-#         # beacon['timestamp'] = beacon['timestamp'].replace(year=2021, day=1, month=2)
-#         # beacon['reference_timestamp'] = beacon['reference_timestamp'].replace(year=2021, day=29, month=1)
-#         track_aircraft(beacon, save_beacon=False, check_date=False)
+        print('Interrupted')
+        try:
+            sys.exit(0)
+        except SystemExit:
+            os._exit(0)
