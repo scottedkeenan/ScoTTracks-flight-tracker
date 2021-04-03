@@ -210,7 +210,10 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
     # log.info("track aircraft!")
     # log.info(pprint.pformat(beacon))
 
-    reference_timestamp = datetime(*time.strptime(beacon['reference_timestamp'], '%Y-%m-%dT%H:%M:%S.%f')[:6])
+    try:
+        reference_timestamp = datetime(*time.strptime(beacon['reference_timestamp'], '%Y-%m-%dT%H:%M:%S.%f')[:6])
+    except ValueError:
+        reference_timestamp = datetime(*time.strptime(beacon['reference_timestamp'], '%Y-%m-%dT%H:%M:%S')[:6])
     beacon['reference_timestamp'] = reference_timestamp
 
     timestamp = datetime(*time.strptime(beacon['timestamp'], '%Y-%m-%dT%H:%M:%S')[:6])
