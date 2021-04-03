@@ -82,8 +82,8 @@ if not db_conn:
     exit(1)
 filters = get_filters_by_country_codes(db_conn.cursor(), track_countries)
 db_conn.close()
-# aprs_filter = ' '.join(filters)
-aprs_filter = ''
+aprs_filter = ' '.join(filters)
+
 
 def connect_to_ogn_and_run(filter_string):
     if len(filter_string.split(' ')) > 9:
