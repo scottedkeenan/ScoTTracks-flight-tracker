@@ -141,9 +141,6 @@ AIRFIELD_LOCATIONS = [x for x in AIRFIELD_DATA.keys()]
 log.debug('Airfields loaded: {}'.format(pprint.pformat(AIRFIELD_LOCATIONS)))
 AIRFIELD_TREE = kdtree.KDTree(AIRFIELD_LOCATIONS)
 
-db_conn.close()
-
-
 def detect_airfield(beacon, flight):
     """
     :param beacon:
@@ -210,6 +207,8 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
     # log.info("track aircraft!")
     # log.info(pprint.pformat(beacon))
 
+    global db_conn
+
     try:
         reference_timestamp = datetime(*time.strptime(beacon['reference_timestamp'], '%Y-%m-%dT%H:%M:%S.%f')[:6])
     except ValueError:
@@ -219,10 +218,9 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
     timestamp = datetime(*time.strptime(beacon['timestamp'], '%Y-%m-%dT%H:%M:%S')[:6])
     beacon['timestamp'] = timestamp
 
-    db_conn = make_database_connection()
     if not db_conn:
-        log.error("Unable to connect to database, skipping beacon")
-        return
+        log.error("Unable to connect to database, attempting to connect")
+        db_conn = make_database_connection()
 
     if save_beacon:
         add_beacon(db_conn.cursor(), beacon)
@@ -538,7 +536,6 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
     # for flight in tracked_aircraft:
     #     log.info(pprint.pformat(tracked_aircraft[flight].to_dict()))
     # log.info('End Tracked aircraft {} {}'.format(len(tracked_aircraft), '======================'))
-    db_conn.close()
 
 import time
 
@@ -573,10 +570,8 @@ def process_beacon(ch, method, properties, body):
 
 
 log.info("Checking database for active flights")
-db_conn = make_database_connection()
 if db_conn:
     database_flights = get_currently_airborne_flights(db_conn.cursor(dictionary=True))
-    db_conn.close()
 else:
     log.error('Unable to retrieve database flights')
     database_flights = {}
@@ -647,6 +642,7 @@ if __name__ == '__main__':
         main()
     except KeyboardInterrupt:
         print('Interrupted')
+        db_conn.close()
         try:
             sys.exit(0)
         except SystemExit:
