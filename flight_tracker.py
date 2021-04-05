@@ -518,7 +518,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
                         flight.takeoff_timestamp,
                         flight.landing_timestamp))
-                    if flight.takeoff_timestamp and flight.landing_timestamp:
+                    if bool(config['TRACKER']['draw_alt_graph']) and flight.takeoff_timestamp and flight.landing_timestamp:
                         draw_alt_graph(
                             db_conn.cursor(),
                             flight
