@@ -128,28 +128,28 @@ class Flight:
                 self.mean_recent_launch_longitude = mean([i['longitude'] for i in self.last_pings])
 
     def launch(self, time_known=True):
-        if self.status == 'ground':
-            self.status = 'air'
-            self.takeoff_airfield = self.nearest_airfield['id']
-            self.takeoff_timestamp = self.timestamp
-            self.takeoff_detection_height = self.agl()
-            # if time_known:
-                # todo set a flag
-            if self.nearest_airfield['launch_type_detection']:
-                log.info('Yes to launch type detection')
-                if self.aircraft_type == 2:
-                    self.launch_type = 'tug'
-            else:
-                if time_known:
-                    log.info('Launch type detection disabled for {} at {}'.format(self.registration,
-                                                                                  self.nearest_airfield['nice_name']))
-                else:
-                    log.info('Launch type detection unavailable for {} at {}'.format(self.registration,
-                                                                                  self.nearest_airfield['nice_name']))
-                self.launch_complete = True
-                self.launch_type = None
+        # if self.status == 'ground':
+        self.status = 'air'
+        self.takeoff_airfield = self.nearest_airfield['id']
+        self.takeoff_timestamp = self.timestamp
+        self.takeoff_detection_height = self.agl()
+        # if time_known:
+            # todo set a flag
+        if self.nearest_airfield['launch_type_detection']:
+            log.info('Yes to launch type detection')
+            if self.aircraft_type == 2:
+                self.launch_type = 'tug'
         else:
-            log.error("Can't launch an airborne aircraft!")
+            if time_known:
+                log.info('Launch type detection disabled for {} at {}'.format(self.registration,
+                                                                              self.nearest_airfield['nice_name']))
+            else:
+                log.info('Launch type detection unavailable for {} at {}'.format(self.registration,
+                                                                              self.nearest_airfield['nice_name']))
+            self.launch_complete = True
+            self.launch_type = None
+        # else:
+        #     log.error("Can't launch an airborne aircraft!")
 
     def seconds_since_launch(self):
         try:

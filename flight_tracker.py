@@ -279,6 +279,17 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
 
         if beacon['ground_speed'] > float(config['TRACKER']['airborne_detection_speed']) and new_flight.agl() > float(config['TRACKER']['airborne_detection_agl']):
             new_flight.status = 'air'
+
+            # if low enough and near enough, treat as a launch
+            # 153m = 500ft
+            if new_flight.distance_to_nearest_airfield < 1 and new_flight.agl() < 153:
+                log.info("Adding aircraft {} as launched at {} @ {}".format(
+                    new_flight.address if new_flight.registration == 'UNKNOWN' else new_flight.registration,
+                    new_flight.nearest_airfield['name'], new_flight.timestamp))
+                new_flight.launch()
+                add_flight(db_conn.cursor(), new_flight.to_dict())
+                db_conn.commit()
+
         else:
             new_flight.status = 'ground'
         log.info("Starting to track aircraft {}/{} {}km from {} with status {}".format(registration,
@@ -290,6 +301,8 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                                                                     new_flight.address,
                                                                     aircraft_model,
                                                                     competition_number))
+
+        log.info("Ground speed: {} | Alt: {} | time: {}".format(beacon['ground_speed'], beacon['altitude'], beacon['timestamp']))
 
         tracked_aircraft[beacon['address']] = new_flight
     else:
