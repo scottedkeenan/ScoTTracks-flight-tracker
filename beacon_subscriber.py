@@ -122,15 +122,15 @@ log.error('Exited with {} failures'.format(failures))
 
 # comment out the live import above
 
-# from flight_tracker_squirreler import get_filters_by_country_codes, get_raw_beacons_between
+# from flight_tracker_squirreler import get_filters_by_country_codes, get_raw_beacons_between, get_raw_beacons_for_address_between
 #
 # db_conn = make_database_connection(config)
-# beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-03-11 10:00:00', '2022-12-22 18:00:00')
+# # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-03-11 10:00:00', '2022-12-22 18:00:00')
 # # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True), '2020-12-29 08:40:55', '2021-12-31 23:00:00')
 # # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True), '2021-02-21 00:00:00', '2022-02-18 23:15:00')
 #
 # # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2021-01-03 10:00:00', '2022-01-10 18:00:00')
-# # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD51CC', '2020-12-22 15:27:19', '2020-12-22 15:33:15')
+# beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD83FE', '2021-04-05 08:00:00', '2021-04-05 11:00:00')
 # # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DD5133', '2020-12-22 15:44:33', '2020-12-22 16:08:56')
 # # beacons = get_raw_beacons_for_address_between(db_conn.cursor(dictionary=True), 'DF0D62', '2020-03-07 09:46:00', '2021-03-014 18:00:00')
 #

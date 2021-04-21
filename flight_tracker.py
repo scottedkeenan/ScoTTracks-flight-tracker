@@ -103,29 +103,24 @@ log.info(pprint.pformat(BEACON_CORRECTIONS))
 tracked_aircraft = {}
 
 
-def make_database_connection(retry_counter=0):
-    if retry_counter > 5:
-        log.error("Failed to connect to database after 5 retries")
-        return
-    try:
-        conn = mysql.connector.connect(
-            user=config['TRACKER']['database_user'],
-            password=config['TRACKER']['database_password'],
-            host=config['TRACKER']['database_host'],
-            database=config['TRACKER']['database'])
-        return conn
-    except mysql.connector.Error as err:
-        log.error(err)
-        retry_counter += 1
-        return make_database_connection(retry_counter)
+def make_database_connection_pool():
+    from mysql.connector import pooling
+    connection_pool = pooling.MySQLConnectionPool(pool_size=1,
+                                                  user=config['TRACKER']['database_user'],
+                                                  password=config['TRACKER']['database_password'],
+                                                  host=config['TRACKER']['database_host'],
+                                                  database=config['TRACKER']['database'])
+    return connection_pool
 
 
-db_conn = make_database_connection()
-if not db_conn:
-    exit(1)
+db_conn_pool = make_database_connection_pool()
+
+airfield_db_conn = db_conn_pool.get_connection()
+
+pprint.pprint(airfield_db_conn.get_server_info())
 
 AIRFIELD_DATA = {}
-for airfield in get_airfields_for_countries(db_conn.cursor(), config['TRACKER']['track_countries'].split(',')):
+for airfield in get_airfields_for_countries(airfield_db_conn.cursor(), config['TRACKER']['track_countries'].split(',')):
     airfield_json = {
         'id': airfield[0],
         'name': airfield[1],
@@ -140,6 +135,10 @@ for airfield in get_airfields_for_countries(db_conn.cursor(), config['TRACKER'][
 AIRFIELD_LOCATIONS = [x for x in AIRFIELD_DATA.keys()]
 log.debug('Airfields loaded: {}'.format(pprint.pformat(AIRFIELD_LOCATIONS)))
 AIRFIELD_TREE = kdtree.KDTree(AIRFIELD_LOCATIONS)
+if airfield_db_conn.is_connected():
+    airfield_db_conn.close()
+    print("MySQL connection is closed")
+
 
 def detect_airfield(beacon, flight):
     """
@@ -207,7 +206,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
     # log.info("track aircraft!")
     # log.info(pprint.pformat(beacon))
 
-    global db_conn
+    db_conn = None
 
     try:
         reference_timestamp = datetime(*time.strptime(beacon['reference_timestamp'], '%Y-%m-%dT%H:%M:%S.%f')[:6])
@@ -218,11 +217,9 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
     timestamp = datetime(*time.strptime(beacon['timestamp'], '%Y-%m-%dT%H:%M:%S')[:6])
     beacon['timestamp'] = timestamp
 
-    if not db_conn:
-        log.error("Unable to connect to database, attempting to connect")
-        db_conn = make_database_connection()
-
     if save_beacon:
+        if not db_conn:
+            db_conn = db_conn_pool.get_connection()
         add_beacon(db_conn.cursor(), beacon)
 
     try:
@@ -287,6 +284,8 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     new_flight.address if new_flight.registration == 'UNKNOWN' else new_flight.registration,
                     new_flight.nearest_airfield['name'], new_flight.timestamp))
                 new_flight.launch()
+                if not db_conn:
+                    db_conn = db_conn_pool.get_connection()
                 add_flight(db_conn.cursor(), new_flight.to_dict())
                 db_conn.commit()
 
@@ -326,6 +325,8 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
                         flight.nearest_airfield['name'], flight.timestamp))
                     flight.launch()
+                    if not db_conn:
+                        db_conn = db_conn_pool.get_connection()
                     add_flight(db_conn.cursor(), flight.to_dict())
                     db_conn.commit()
                 #2.5 naut. miles
@@ -343,6 +344,8 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     # prevent launch height tracking
                     flight.launch_height = None
                     flight.launch_complete = True
+                    if not db_conn:
+                        db_conn = db_conn_pool.get_connection()
                     add_flight(db_conn.cursor(), flight.to_dict())
                     db_conn.commit()
                 # 2.5 naut. miles
@@ -361,6 +364,8 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     flight.takeoff_airfield = 'UNKNOWN'
                     flight.launch_height = None
                     flight.launch_complete = True
+                    if not db_conn:
+                        db_conn = db_conn_pool.get_connection()
                     add_flight(db_conn.cursor(), flight.to_dict())
                     db_conn.commit()
 
@@ -432,6 +437,8 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                             time_since_launch,
                             flight.average_launch_climb_rate
                         ))
+                    if not db_conn:
+                        db_conn = db_conn_pool.get_connection()
                     update_flight(db_conn.cursor(), flight.to_dict())
                     db_conn.commit()
 
@@ -447,12 +454,16 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                             flight.average_launch_climb_rate,
                         ))
                     log.info('Launch gradients: {}'.format(flight.launch_gradients))
+                    if not db_conn:
+                        db_conn = db_conn_pool.get_connection()
                     update_flight(db_conn.cursor(), flight.to_dict())
                     db_conn.commit()
 
                 if flight.launch_type in ['aerotow_glider', 'aerotow_pair', 'aerotow_tug']:
                     try:
                         flight.update_aerotow(beacon)
+                        if not db_conn:
+                            db_conn = db_conn_pool.get_connection()
                         update_flight(db_conn.cursor(), flight.to_dict())
                         db_conn.commit()
                         update_flight(db_conn.cursor(), flight.tug.to_dict())
@@ -490,6 +501,8 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                                     recent_average_diff,
                                     sl
                                 ))
+                            if not db_conn:
+                                db_conn = db_conn_pool.get_connection()
                             update_flight(db_conn.cursor(), flight.to_dict())
                             db_conn.commit()
                     except StatisticsError:
@@ -522,9 +535,13 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     log.info('Landing data... ground_speed: {}, agl: {}, climb_rate: {}'.format(beacon['ground_speed'], flight.agl(), beacon['climb_rate']))
 
                     if flight.takeoff_timestamp:
+                        if not db_conn:
+                            db_conn = db_conn_pool.get_connection()
                         update_flight(db_conn.cursor(), flight.to_dict())
                         db_conn.commit()
                     else:
+                        if not db_conn:
+                            db_conn = db_conn_pool.get_connection()
                         add_flight(db_conn.cursor(), flight.to_dict())
                         db_conn.commit()
                     log.info('Aircraft {} flew from {} to {}'.format(
@@ -532,6 +549,8 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                         flight.takeoff_timestamp,
                         flight.landing_timestamp))
                     if config['TRACKER']['draw_alt_graph'] == 'true' and flight.takeoff_timestamp and flight.landing_timestamp:
+                        if not db_conn:
+                            db_conn = db_conn_pool.get_connection()
                         draw_alt_graph(
                             db_conn.cursor(),
                             flight
@@ -544,7 +563,10 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                 #     log.info('NOT Landing data... ground_speed: {}, agl: {}, climb_rate: {}'.format(beacon['ground_speed'],
                 #                                                                                 flight.agl(),
                 #                                                                                 beacon['climb_rate']))
-
+    if db_conn:
+        if db_conn.is_connected():
+            db_conn.close()
+        print("MySQL connection is closed")
     # log.info('Tracked aircraft =========================')
     # for flight in tracked_aircraft:
     #     log.info(pprint.pformat(tracked_aircraft[flight].to_dict()))
@@ -555,9 +577,9 @@ import time
 beacon_count = 0
 
 def process_beacon(ch, method, properties, body):
-    # log.info('Beacon process start')
+    log.info('Beacon process start')
     # global  beacon_count
-    # start = time.time()
+    start = time.time()
     try:
         beacon = json.loads(body)
         try:
@@ -565,7 +587,7 @@ def process_beacon(ch, method, properties, body):
                 log.debug('Aircraft beacon received')
                 if beacon['aircraft_type'] in [1, 2]:
                     try:
-                        track_aircraft(beacon)
+                        track_aircraft(beacon, check_date=False)
                     except TypeError as e:
                         log.info('Type error while tracking: {}'.format(e))
                         raise
@@ -576,18 +598,12 @@ def process_beacon(ch, method, properties, body):
     except ParseError as e:
         log.error('Parse error: {}'.format(e))
     end = time.time()
-    # beacon_count += 1
-    # log.info('Beacon took {} to process'.format(end - start))
-    # log.info('Beacon count: {}'.format(beacon_count))
-
+    log.info('Beacon took {} to process'.format(end - start))
 
 
 log.info("Checking database for active flights")
-if db_conn:
-    database_flights = get_currently_airborne_flights(db_conn.cursor(dictionary=True))
-else:
-    log.error('Unable to retrieve database flights')
-    database_flights = {}
+active_flights_db_conn = db_conn_pool.get_connection()
+database_flights = get_currently_airborne_flights(active_flights_db_conn.cursor(dictionary=True))
 
 for db_flight in database_flights:
     db_tracked_flight = Flight(db_flight['airfield'],
@@ -621,6 +637,9 @@ log.info("Database flights =========")
 for aircraft in tracked_aircraft:
     log.info(pprint.pformat(tracked_aircraft[aircraft].to_dict()))
 log.info("=========")
+if active_flights_db_conn.is_connected():
+    active_flights_db_conn.close()
+    print("MySQL connection is closed")
 
 # LIVE get beacons
 
@@ -655,7 +674,6 @@ if __name__ == '__main__':
         main()
     except KeyboardInterrupt:
         print('Interrupted')
-        db_conn.close()
         try:
             sys.exit(0)
         except SystemExit:
