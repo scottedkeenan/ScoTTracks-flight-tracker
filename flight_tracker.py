@@ -6,6 +6,8 @@ import os
 import pprint
 
 import pika
+from pika.exceptions import StreamLostError
+
 
 import sys
 
@@ -639,6 +641,7 @@ log.info("=========")
 #         except AttributeError as err:
 #             log.error(err)
 
+
 def connect_to_queue():
     connection = pika.BlockingConnection(pika.ConnectionParameters(config['TRACKER']['rabbit_mq_host']))
     channel = connection.channel()
@@ -649,7 +652,6 @@ def connect_to_queue():
 
     channel.start_consuming()
 
-from pika.exceptions import StreamLostError
 
 def main():
     while True:
@@ -657,7 +659,6 @@ def main():
             connect_to_queue()
         except pika.exceptions.StreamLostError:
             log.error('Queue connection lost, retrying')
-            connect_to_queue()
 
 if __name__ == '__main__':
     try:
