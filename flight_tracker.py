@@ -639,16 +639,25 @@ log.info("=========")
 #         except AttributeError as err:
 #             log.error(err)
 
-
-def main():
+def connect_to_queue():
     connection = pika.BlockingConnection(pika.ConnectionParameters(config['TRACKER']['rabbit_mq_host']))
     channel = connection.channel()
 
     channel.basic_consume(queue='received_beacons',
-                      auto_ack=True,
-                      on_message_callback=process_beacon)
+                          auto_ack=True,
+                          on_message_callback=process_beacon)
 
     channel.start_consuming()
+
+from pika.exceptions import StreamLostError
+
+def main():
+    while True:
+        try:
+            connect_to_queue()
+        except pika.exceptions.StreamLostError:
+            log.error('Queue connection lost, retrying')
+            connect_to_queue()
 
 if __name__ == '__main__':
     try:
