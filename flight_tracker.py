@@ -8,6 +8,8 @@ import pprint
 import pika
 from pika.exceptions import StreamLostError
 
+import pickle
+import redis
 
 import sys
 
@@ -102,7 +104,10 @@ BEACON_CORRECTIONS = import_beacon_correction_data()
 
 log.info(pprint.pformat(BEACON_CORRECTIONS))
 
-tracked_aircraft = {}
+
+redis_client = redis.Redis(host=config['TRACKER']['redis_host'],
+                           port=config['TRACKER']['redis_port'],
+                           db=0)
 
 
 def make_database_connection(retry_counter=0):
@@ -143,6 +148,7 @@ AIRFIELD_LOCATIONS = [x for x in AIRFIELD_DATA.keys()]
 log.debug('Airfields loaded: {}'.format(pprint.pformat(AIRFIELD_LOCATIONS)))
 AIRFIELD_TREE = kdtree.KDTree(AIRFIELD_LOCATIONS)
 
+
 def detect_airfield(beacon, flight):
     """
     :param beacon:
@@ -171,15 +177,15 @@ def detect_airfield(beacon, flight):
     flight.distance_to_nearest_airfield = distance_to_nearest
 
 
-def detect_tug(tracked_aircraft, flight):
+def detect_tug(flight):
     log.debug('Looking for a tug launch for {}'.format(flight.registration))
-    for address in tracked_aircraft:
-        if flight.aircraft_type == 2:
-            log.info('This IS a tug!')
-            return False
-        if address == flight.address:
+    if flight.aircraft_type == 2:
+        log.info('This IS a tug!')
+        return False
+    for cached_flight in redis_client.scan_iter('flight_tracker_*'):
+        other_flight = pickle.loads(redis_client.get(cached_flight))
+        if other_flight.address == flight.address:
             continue
-        other_flight = tracked_aircraft[address]
         if other_flight.takeoff_timestamp and other_flight.takeoff_airfield == flight.takeoff_airfield:
             time_difference = (other_flight.takeoff_timestamp - flight.takeoff_timestamp).total_seconds()
             if -10 < time_difference < 10:
@@ -234,15 +240,18 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
         # log.info('No correction to apply for {} beacon. Alt: {}'.format(beacon['receiver_name'], beacon['altitude']))
         pass
 
-    if beacon['address'] in tracked_aircraft.keys() and check_date:
+    # if redis_client.get(beacon['address']) and check_date:
         # Remove outdated tracking
-        if datetime.date(tracked_aircraft[beacon['address']].timestamp) < datetime.today().date():
-            tracked_aircraft.pop(beacon['address'])
-            log.debug("Removed outdated tracking for: {}".format(beacon['address']))
-        else:
-            log.debug('Tracking checked and is up to date')
+        # Redis will set expriy
+        # todo: remove
+        # if datetime.date(tracked_aircraft[beacon['address']].timestamp) < datetime.today().date():
+        #     tracked_aircraft.pop(beacon['address'])
+        #     log.debug("Removed outdated tracking for: {}".format(beacon['address']))
+        # else:
+        #     log.debug('Tracking checked and is up to date')
 
-    if beacon['address'] not in tracked_aircraft.keys():
+    if not redis_client.get('flight_tracker_' + beacon['address']):
+        print('Didn\'t get')
         try:
             device = DEVICE_DICT[beacon['address']]
         except KeyError:
@@ -285,10 +294,10 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
             # if low enough and near enough, treat as a launch
             # 153m = 500ft
             if new_flight.distance_to_nearest_airfield < 1 and new_flight.agl() < 153:
-                log.info("Adding aircraft {} as launched at {} @ {}".format(
+                log.info("1 Adding aircraft {} as launched at {} @ {}".format(
                     new_flight.address if new_flight.registration == 'UNKNOWN' else new_flight.registration,
                     new_flight.nearest_airfield['name'], new_flight.timestamp))
-                new_flight.launch()
+                new_flight.launch(redis_client)
                 add_flight(db_conn.cursor(), new_flight.to_dict())
                 db_conn.commit()
 
@@ -306,15 +315,15 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
 
         log.info("Ground speed: {} | Alt: {} | time: {}".format(beacon['ground_speed'], beacon['altitude'], beacon['timestamp']))
 
-        tracked_aircraft[beacon['address']] = new_flight
+        redis_client.set('flight_tracker_' + beacon['address'], pickle.dumps(new_flight), ex=config['TRACKER']['redis_expiry'])
     else:
         log.debug('Updating tracked aircraft')
-        flight = tracked_aircraft[beacon['address']]
+        flight = pickle.loads(redis_client.get('flight_tracker_' + beacon['address']))
 
         # update fields of flight
         detect_airfield(beacon, flight) # updates airfield and distance to airfield
         last_flight_timestamp = flight.timestamp
-        flight.update(beacon)
+        flight.update(beacon, redis_client)
 
         if flight.status == 'ground' and last_flight_timestamp <= timestamp:
 
@@ -324,38 +333,39 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                 # Aircraft launch detected
                 # At airfield
                 if flight.distance_to_nearest_airfield < float(config['TRACKER']['airfield_detection_radius']):
-                    log.info("Adding aircraft {} as launched at {} @ {}".format(
+                    log.info("2 Adding aircraft {} as launched at {} @ {}".format(
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
                         flight.nearest_airfield['name'], flight.timestamp))
-                    flight.launch()
+                    flight.launch(redis_client)
                     add_flight(db_conn.cursor(), flight.to_dict())
                     db_conn.commit()
                 #2.5 naut. miles
                 elif flight.distance_to_nearest_airfield < 4.63:
                     #todo: give airfields a max launch detection range
                     # Not near airfield anymore - tracking for launch has been missed
-                    log.info("Adding aircraft {} as launched at {} but we missed it".format(
+                    log.info("3 Adding aircraft {} as launched at {} but we missed it".format(
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
                         flight.nearest_airfield['name'],
                         flight.timestamp))
                     # todo: use the time known arg below to srt flag in db
-                    flight.launch(time_known=False)
+                    flight.launch(redis_client, time_known=False)
                     #todo: enum/dict the launch types 1: etc.
                     flight.launch_type = 'unknown, nearest field'
                     # prevent launch height tracking
                     flight.launch_height = None
                     flight.launch_complete = True
+                    redis_client.set('flight_tracker_' + flight.address, pickle.dumps(flight))
                     add_flight(db_conn.cursor(), flight.to_dict())
                     db_conn.commit()
                 # 2.5 naut. miles
                 else:
                     #todo: give airfields a max launch detection range
                     # Not near airfield at all
-                    log.info("Adding aircraft {} as launched near(ish) {} but outside 2.5 nautical mile radius".format(
+                    log.info("4 Adding aircraft {} as launched near(ish) {} but outside 2.5 nautical mile radius".format(
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
                         flight.nearest_airfield['name'],
                         flight.timestamp))
-                    flight.launch(time_known=False)
+                    flight.launch(redis_client, time_known=False)
                     # todo: use the time known arg below to srt flag in db
                     #todo: enum/dict the launch types 1:winch etc.
                     flight.launch_type = 'unknown, {}km'.format(round(flight.distance_to_nearest_airfield, 2))
@@ -363,6 +373,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     flight.takeoff_airfield = 'UNKNOWN'
                     flight.launch_height = None
                     flight.launch_complete = True
+                    redis_client.set('flight_tracker_' + flight.address, pickle.dumps(flight))
                     add_flight(db_conn.cursor(), flight.to_dict())
                     db_conn.commit()
 
@@ -398,7 +409,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
 
                     if not flight.launch_type:
                         # detect tug will update the launch type if a flarm tug is detected
-                        if not detect_tug(tracked_aircraft, flight):
+                        if not detect_tug(flight):
                             if len(flight.launch_beacon_heights) >= 5:
                                 log.info('Deciding launch type for {} at {} @{} based on gradient: {}'.format(
                                     flight.registration,
@@ -407,7 +418,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                                     flight.launch_gradient()
                                 ))
                                 if flight.launch_gradient() > float(config['TRACKER']['winch_detection_gradient']):
-                                    flight.set_launch_type('winch')
+                                    flight.set_launch_type('winch', redis_client)
                                 elif len(flight.launch_beacon_heights) >= 10:
                                     try:
                                         flight.average_launch_climb_rate = mean(flight.launch_climb_rates.values())
@@ -422,7 +433,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                                     #     flight.takeoff_timestamp,
                                     #     pprint.pformat(flight.launch_climb_rates)
                                     # ))
-                                    flight.set_launch_type('aerotow_sl')
+                                    flight.set_launch_type('aerotow_sl', redis_client)
                 elif not flight.launch_complete:
                     flight.launch_complete = True
                     log.info(
@@ -434,6 +445,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                             time_since_launch,
                             flight.average_launch_climb_rate
                         ))
+                    redis_client.set('flight_tracker_' + flight.address, pickle.dumps(flight))
                     update_flight(db_conn.cursor(), flight.to_dict())
                     db_conn.commit()
 
@@ -449,14 +461,16 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                             flight.average_launch_climb_rate,
                         ))
                     log.info('Launch gradients: {}'.format(flight.launch_gradients))
+                    redis_client.set('flight_tracker_' + flight.address, pickle.dumps(flight))
                     update_flight(db_conn.cursor(), flight.to_dict())
                     db_conn.commit()
 
                 if flight.launch_type in ['aerotow_glider', 'aerotow_pair', 'aerotow_tug']:
                     try:
-                        flight.update_aerotow(beacon)
+                        flight.update_aerotow(beacon, redis_client)
                         update_flight(db_conn.cursor(), flight.to_dict())
                         db_conn.commit()
+                        redis_client.set('flight_tracker_' + flight.tug.address, pickle.dumps(flight.tug))
                         update_flight(db_conn.cursor(), flight.tug.to_dict())
                         db_conn.commit()
                     except AttributeError as err:
@@ -492,6 +506,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                                     recent_average_diff,
                                     sl
                                 ))
+                            redis_client.set('flight_tracker_' + flight.address, pickle.dumps(flight))
                             update_flight(db_conn.cursor(), flight.to_dict())
                             db_conn.commit()
                     except StatisticsError:
@@ -524,9 +539,11 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     log.info('Landing data... ground_speed: {}, agl: {}, climb_rate: {}'.format(beacon['ground_speed'], flight.agl(), beacon['climb_rate']))
 
                     if flight.takeoff_timestamp:
+                        redis_client.set('flight_tracker_' + flight.address, pickle.dumps(flight))
                         update_flight(db_conn.cursor(), flight.to_dict())
                         db_conn.commit()
                     else:
+                        redis_client.set('flight_tracker_' + flight.address, pickle.dumps(flight))
                         add_flight(db_conn.cursor(), flight.to_dict())
                         db_conn.commit()
                     log.info('Aircraft {} flew from {} to {}'.format(
@@ -538,7 +555,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                             db_conn.cursor(),
                             flight
                         )
-                    tracked_aircraft.pop(flight.address)
+                    redis_client.delete('flight_tracker_' + flight.address)
                 # else:
                 #     log.info("NOT Updating aircraft {} as landed at {}".format(
                 #         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
@@ -567,7 +584,7 @@ def process_beacon(ch, method, properties, body):
                 log.debug('Aircraft beacon received')
                 if beacon['aircraft_type'] in [1, 2]:
                     try:
-                        track_aircraft(beacon)
+                        track_aircraft(beacon, save_beacon=False)
                     except TypeError as e:
                         log.info('Type error while tracking: {}'.format(e))
                         raise
@@ -617,11 +634,11 @@ for db_flight in database_flights:
     # todo: other flight as object
     db_tracked_flight.tug = db_flight['tug_registration']
 
-    tracked_aircraft[db_tracked_flight.address] = db_tracked_flight
+    redis_client.set('flight_tracker_' + db_tracked_flight.address, pickle.dumps(db_tracked_flight), ex=config['TRACKER']['redis_expiry'])
 
 log.info("Database flights =========")
-for aircraft in tracked_aircraft:
-    log.info(pprint.pformat(tracked_aircraft[aircraft].to_dict()))
+for aircraft in redis_client.scan_iter('flight_tracker_*'):
+    log.info(pprint.pformat(pickle.loads(redis_client.get(aircraft)).to_dict()))
 log.info("=========")
 
 # LIVE get beacons

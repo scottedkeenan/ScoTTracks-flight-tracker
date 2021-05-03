@@ -2,6 +2,8 @@ from collections import deque
 from statistics import mean
 import os
 
+import pickle
+
 import logging
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 log = logging.getLogger(__name__)
@@ -84,7 +86,7 @@ class Flight:
 
         }
 
-    def update(self, beacon):
+    def update(self, beacon, redis_client):
         self.altitude = beacon['altitude']
 
         if self.status == 'air' and not self.launch_complete:
@@ -126,8 +128,9 @@ class Flight:
                 self.mean_recent_launch_altitude = mean([i['altitude'] for i in self.last_pings])
                 self.mean_recent_launch_latitude = mean([i['latitude'] for i in self.last_pings])
                 self.mean_recent_launch_longitude = mean([i['longitude'] for i in self.last_pings])
+        redis_client.set('flight_tracker_' + self.address, pickle.dumps(self))
 
-    def launch(self, time_known=True):
+    def launch(self, redis_client, time_known=True):
         # if self.status == 'ground':
         self.status = 'air'
         self.takeoff_airfield = self.nearest_airfield['id']
@@ -150,6 +153,8 @@ class Flight:
             self.launch_type = None
         # else:
         #     log.error("Can't launch an airborne aircraft!")
+        redis_client.set('flight_tracker_' + self.address, pickle.dumps(self))
+
 
     def seconds_since_launch(self):
         try:
@@ -158,7 +163,7 @@ class Flight:
             return None
 
     def launch_gradient(self):
-        # beacons don't aways arrive in timestamp order
+        # beacons don't always arrive in timestamp order
 
         last_launch_height = sorted(self.launch_beacon_heights)[-1]
         if last_launch_height[0] == self.takeoff_timestamp:
@@ -175,7 +180,7 @@ class Flight:
             ))
             return False
 
-    def set_launch_type(self, launch_type):
+    def set_launch_type(self, launch_type, redis_client):
         initial_launch_types = ['winch', 'aerotow_pair', 'aerotow_glider' 'self', 'tug', 'unknown, nearest field', 'aerotow_sl']
         updatable_launch_types = ['winch l/f']
 
@@ -193,6 +198,7 @@ class Flight:
                 self.launch_type = updatable_launch_types
             else:
                 log.error('Cannot change launch type to non-failure type during launch')
+        redis_client.set('flight_tracker_' + self.address, pickle.dumps(self))
 
     def agl(self):
         if self.nearest_airfield:
@@ -208,6 +214,8 @@ class Flight:
         else:
             return None
 
-    def update_aerotow(self, beacon):
+    def update_aerotow(self, redis_client, beacon):
         if self.aerotow:
             self.aerotow.insert_data(self, beacon)
+            redis_client.set('flight_tracker_' + self.address, pickle.dumps(self))
+
