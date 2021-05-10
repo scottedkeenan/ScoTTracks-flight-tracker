@@ -70,6 +70,8 @@ def filter_queue_beacon(raw_message):
             log.debug('Beacon type field not found: {}'.format(e))
     except ParseError as e:
         log.error('Parse error: {}'.format(e))
+    except NotImplementedError as e:
+        log.error('Not implemented error: {}'.format(e))
     end = time.time()
     log.info('Beacon took {} to process'.format(end - start))
 
