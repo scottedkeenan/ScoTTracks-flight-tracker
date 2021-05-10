@@ -192,7 +192,11 @@ class Flight:
             if launch_type in updatable_launch_types:
                 self.launch_type = updatable_launch_types
             else:
-                log.error('Cannot change launch type to non-failure type during launch')
+                log.error('Cannot change launch type for {} to non-failure type ({} from {}) during launch'.format(
+                    self.registration,
+                    launch_type,
+                    self.launch_type
+                    ))
 
     def agl(self):
         if self.nearest_airfield:
