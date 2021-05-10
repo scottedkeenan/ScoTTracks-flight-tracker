@@ -477,7 +477,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                         recent_average = mean(list(flight.launch_climb_rates.values())[-10:])
                         recent_average_diff = recent_average - flight.average_launch_climb_rate
 
-                        if recent_average_diff < -2 or recent_average_diff > 4:
+                        if recent_average_diff < -2 or recent_average_diff > 5:
                             sl = None
                             if recent_average_diff < -2:
                                 sl = "sink"
