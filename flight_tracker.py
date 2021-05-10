@@ -285,9 +285,10 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
             # if low enough and near enough, treat as a launch
             # 153m = 500ft
             if new_flight.distance_to_nearest_airfield < 1 and new_flight.agl() < 153:
-                log.info("Adding aircraft {} as launched at {} @ {}".format(
+                log.info("Adding aircraft {} as launched at {} @ {} [First detection in air]".format(
                     new_flight.address if new_flight.registration == 'UNKNOWN' else new_flight.registration,
-                    new_flight.nearest_airfield['name'], new_flight.timestamp))
+                    new_flight.nearest_airfield['name'],
+                    new_flight.timestamp))
                 new_flight.launch()
                 add_flight(db_conn.cursor(), new_flight.to_dict())
                 db_conn.commit()
@@ -310,6 +311,14 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
     else:
         log.debug('Updating tracked aircraft')
         flight = tracked_aircraft[beacon['address']]
+        if beacon['timestamp'] < flight.timestamp:
+            log.info('Skipping beacon from the past')
+            return
+        else:
+            # update flight timestamp
+            flight.timestamp = beacon['timestamp']
+
+
 
         # update fields of flight
         detect_airfield(beacon, flight) # updates airfield and distance to airfield
@@ -324,9 +333,11 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                 # Aircraft launch detected
                 # At airfield
                 if flight.distance_to_nearest_airfield < float(config['TRACKER']['airfield_detection_radius']):
-                    log.info("Adding aircraft {} as launched at {} @ {}".format(
+                    log.info("Adding aircraft {} as launched at {} @ {} [at airfield] ref: [{}]".format(
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
-                        flight.nearest_airfield['name'], flight.timestamp))
+                        flight.nearest_airfield['name'],
+                        beacon['timestamp'],
+                        beacon['reference_timestamp']))
                     flight.launch()
                     add_flight(db_conn.cursor(), flight.to_dict())
                     db_conn.commit()
@@ -375,7 +386,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
 
                 # todo remove unused flight object fields eg 'tracking_launch_height'
 
-            if flight.takeoff_timestamp and not flight.launch_complete:
+            if flight.takeoff_timestamp and not flight.launch_complete and last_flight_timestamp <= timestamp:
 
                 time_since_launch = flight.seconds_since_launch()
                 log.debug("time since launch: {}".format(time_since_launch))
@@ -517,9 +528,11 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     if flight.takeoff_timestamp and not flight.launch_complete:
                         flight.launch_type = 'winch l/f'
 
-                    log.info("Updating aircraft {} as landed at {}".format(
+                    log.info("Updating aircraft {} as landed at {} @ {} Ref:[{}]".format(
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
-                        flight.nearest_airfield['name']))
+                        flight.nearest_airfield['name'],
+                        flight.landing_timestamp,
+                        beacon['reference_timestamp']))
 
                     log.info('Landing data... ground_speed: {}, agl: {}, climb_rate: {}'.format(beacon['ground_speed'], flight.agl(), beacon['climb_rate']))
 
@@ -567,7 +580,7 @@ def process_beacon(ch, method, properties, body):
                 log.debug('Aircraft beacon received')
                 if beacon['aircraft_type'] in [1, 2]:
                     try:
-                        track_aircraft(beacon)
+                        track_aircraft(beacon, save_beacon=False, check_date=False)
                     except TypeError as e:
                         log.info('Type error while tracking: {}'.format(e))
                         raise
