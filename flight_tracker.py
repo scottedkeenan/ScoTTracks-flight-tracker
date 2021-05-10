@@ -569,6 +569,9 @@ import time
 
 beacon_count = 0
 
+save_beacon = True if config['TRACKER']['save_beacon'] == 'True' else False
+check_date = True if config['TRACKER']['check_date'] == 'True' else False
+
 def process_beacon(ch, method, properties, body):
     # log.info('Beacon process start')
     # global  beacon_count
@@ -580,7 +583,7 @@ def process_beacon(ch, method, properties, body):
                 log.debug('Aircraft beacon received')
                 if beacon['aircraft_type'] in [1, 2]:
                     try:
-                        track_aircraft(beacon, save_beacon=False, check_date=False)
+                        track_aircraft(beacon, save_beacon, check_date)
                     except TypeError as e:
                         log.info('Type error while tracking: {}'.format(e))
                         raise
