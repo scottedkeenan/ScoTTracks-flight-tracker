@@ -229,7 +229,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
 
     try:
         beacon['altitude'] = beacon['altitude'] + BEACON_CORRECTIONS[beacon['receiver_name']]
-        log.info('Correction applied for {} beacon. Alt: {}'.format(beacon['receiver_name'], beacon['altitude']))
+        log.debug('Correction applied for {} beacon. Alt: {}'.format(beacon['receiver_name'], beacon['altitude']))
     except KeyError:
         # log.info('No correction to apply for {} beacon. Alt: {}'.format(beacon['receiver_name'], beacon['altitude']))
         pass
@@ -311,13 +311,13 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
     else:
         log.debug('Updating tracked aircraft')
         flight = tracked_aircraft[beacon['address']]
-        if beacon['timestamp'] < flight.timestamp:
-            log.info('Skipping beacon from the past')
+        if beacon['timestamp'] <= flight.timestamp:
+            # log.info('Skipping beacon from the past')
+            # log.info(f"{flight.registration} Beacon {beacon['timestamp']}, flight {flight.timestamp}, rec {beacon['receiver_name']}")
             return
-        else:
-            # update flight timestamp
-            flight.timestamp = beacon['timestamp']
-
+        # else:
+        #     log.info('continuing')
+        #     log.info(f"{flight.registration} Beacon {beacon['timestamp']}, flight {flight.timestamp}, rec {beacon['receiver_name']}")
 
 
         # update fields of flight
@@ -410,30 +410,25 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     if not flight.launch_type:
                         # detect tug will update the launch type if a flarm tug is detected
                         if not detect_tug(tracked_aircraft, flight):
+                            log.debug(f"{flight.registration} launch beacon heights {len(flight.launch_beacon_heights)}")
                             if len(flight.launch_beacon_heights) >= 5:
-                                log.info('Deciding launch type for {} at {} @{} based on gradient: {}'.format(
+                                log.debug('Deciding launch type for {} at {} @{} based on gradient: {}[{}]'.format(
                                     flight.registration,
                                     flight.nearest_airfield['nice_name'],
                                     flight.takeoff_timestamp,
-                                    flight.launch_gradient()
+                                    flight.launch_gradient(),
+                                    beacon['receiver_name']
                                 ))
                                 if flight.launch_gradient() > float(config['TRACKER']['winch_detection_gradient']):
+                                    log.info('{} detected winch launching at {}'.format(flight.registration, flight.nearest_airfield['nice_name']))
                                     flight.set_launch_type('winch')
                                 elif len(flight.launch_beacon_heights) >= 10:
                                     try:
                                         flight.average_launch_climb_rate = mean(flight.launch_climb_rates.values())
                                     except StatisticsError:
                                         log.info("No data to average, skipping")
-
-
-
-                                    # log.info('Deciding launch type for {} at {} @{} based on climb rates: {}'.format(
-                                    #     flight.registration,
-                                    #     flight.takeoff_airfield,
-                                    #     flight.takeoff_timestamp,
-                                    #     pprint.pformat(flight.launch_climb_rates)
-                                    # ))
-                                    flight.set_launch_type('aerotow_sl')
+                                log.info('{} detected aerotow (unknown tug) or self launching at {}'.format(flight.registration, flight.nearest_airfield['nice_name']))
+                                flight.set_launch_type('aerotow_sl')
                 elif not flight.launch_complete:
                     flight.launch_complete = True
                     log.info(
@@ -451,7 +446,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                 if flight.launch_type == 'winch' and time_since_launch > launch_tracking_times['winch']:
                     flight.launch_complete = True
                     log.info(
-                        '{} launch complete at {}! Launch type: {}, Launch height: {}, Launch time: {}, Average vertical: {}'.format(
+                        '{} winch launch complete at {}! Launch type: {}, Launch height: {}, Launch time: {}, Average vertical: {}'.format(
                             flight.address if flight.registration == 'UNKNOWN' else flight.registration,
                             flight.nearest_airfield['nice_name'],
                             flight.launch_type,
@@ -482,18 +477,18 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                         recent_average = mean(list(flight.launch_climb_rates.values())[-10:])
                         recent_average_diff = recent_average - flight.average_launch_climb_rate
 
-                        if recent_average_diff < -2 or recent_average_diff > 2:
+                        if recent_average_diff < -2 or recent_average_diff > 4:
                             sl = None
                             if recent_average_diff < -2:
                                 sl = "sink"
                             if recent_average_diff > 2:
                                 sl = "lift"
                             flight.launch_complete = True
-                            log.info('Launch gradients: {}'.format(flight.launch_gradients))
-                            # log.info(flight.launch_climb_rates.values())
+                            log.debug(flight.launch_climb_rates.values())
                             log.info(
-                                '{} launch complete at {}! Launch type: {}, Launch height: {}, Launch time: {}, Average vertical: {}, Recent Average Vertical: {}, Difference: {}, Sink/lift: {}'.format(
+                                '{} {} launch complete at {}! Launch type: {}, Launch height: {}, Launch time: {}, Average vertical: {}, Recent Average Vertical: {}, Difference: {}, Sink/lift: {}'.format(
                                     flight.address if flight.registration == 'UNKNOWN' else flight.registration,
+                                    flight.launch_type,
                                     flight.nearest_airfield['nice_name'],
                                     flight.launch_type,
                                     flight.launch_height * 3.281,
@@ -552,14 +547,8 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                             flight
                         )
                     tracked_aircraft.pop(flight.address)
-                # else:
-                #     log.info("NOT Updating aircraft {} as landed at {}".format(
-                #         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
-                #         flight.landing_airfield))
-                #     log.info('NOT Landing data... ground_speed: {}, agl: {}, climb_rate: {}'.format(beacon['ground_speed'],
-                #                                                                                 flight.agl(),
-                #                                                                                 beacon['climb_rate']))
-
+        # update flight timestamp
+        flight.timestamp = beacon['timestamp']
     # log.info('Tracked aircraft =========================')
     # for flight in tracked_aircraft:
     #     log.info(pprint.pformat(tracked_aircraft[flight].to_dict()))
