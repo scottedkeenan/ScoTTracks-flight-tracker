@@ -261,7 +261,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
 
             if DEVICE_DICT[beacon['address']]['TRACKED'] != 'Y':
                 log.warning('Aircraft {}/{} requests no track'.format(registration, beacon['address']))
-                tracked_aircraft[beacon['address']] = Flight(
+                no_track_flight =  Flight(
                     None,
                     beacon['address'],
                     'no_track',
@@ -273,6 +273,10 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     None,
                     None
                 )
+                no_track_flight.timestamp = beacon['timestamp'].replace(
+                    hour=0, minute=0, second=0
+                )
+                tracked_aircraft[beacon['address']] = no_track_flight
                 return
         else:
             log.info('Setting device data to unknowns')
