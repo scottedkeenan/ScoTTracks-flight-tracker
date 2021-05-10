@@ -42,9 +42,6 @@ log = logging.getLogger(__name__)
 
 def import_device_data():
 
-    # todo: import to database?
-    # todo: keep file for reference?
-
     # "4054A1": {
     #     "DEVICE_TYPE": "I",
     #     "DEVICE_ID": "4054A1",
@@ -251,9 +248,32 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
 
         if device:
             log.info('Using data in device dict')
-            registration = DEVICE_DICT[beacon['address']]['REGISTRATION'].upper() if DEVICE_DICT[beacon['address']]['REGISTRATION'] else 'UNKNOWN'
+
+            if DEVICE_DICT[beacon['address']]['IDENTIFIED'] == 'Y':
+                registration = DEVICE_DICT[beacon['address']]['REGISTRATION'].upper() if DEVICE_DICT[beacon['address']]['REGISTRATION'] else 'UNKNOWN'
+            else:
+                log.warning('Aircraft {} requests no identify'.format(beacon['address']))
+                if DEVICE_DICT[beacon['address']]['REGISTRATION'] != '':
+                    log.warning("Don't identify but reg included: {}!".format(DEVICE_DICT[beacon['address']]['REGISTRATION']))
+                registration = 'UNKNOWN'
             aircraft_model = DEVICE_DICT[beacon['address']]['AIRCRAFT_MODEL'] if DEVICE_DICT[beacon['address']]['AIRCRAFT_MODEL'] else None
             competition_number = DEVICE_DICT[beacon['address']]['CN'] if DEVICE_DICT[beacon['address']]['CN'] else None
+
+            if DEVICE_DICT[beacon['address']]['TRACKED'] != 'Y':
+                log.warning('Aircraft {}/{} requests no track'.format(registration, beacon['address']))
+                tracked_aircraft[beacon['address']] = Flight(
+                    None,
+                    beacon['address'],
+                    'no_track',
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None
+                )
+                return
         else:
             log.info('Setting device data to unknowns')
             registration = 'UNKNOWN'
@@ -270,7 +290,6 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
             beacon['altitude'],
             beacon['ground_speed'],
             beacon['receiver_name'],
-            # beacon['reference_timestamp'],
             reference_timestamp,
             registration,
             aircraft_model,
@@ -311,14 +330,13 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
     else:
         log.debug('Updating tracked aircraft')
         flight = tracked_aircraft[beacon['address']]
+        if flight.aircraft_type == 'no_track':
+            return
+
         if beacon['timestamp'] <= flight.timestamp:
             # log.info('Skipping beacon from the past')
             # log.info(f"{flight.registration} Beacon {beacon['timestamp']}, flight {flight.timestamp}, rec {beacon['receiver_name']}")
             return
-        # else:
-        #     log.info('continuing')
-        #     log.info(f"{flight.registration} Beacon {beacon['timestamp']}, flight {flight.timestamp}, rec {beacon['receiver_name']}")
-
 
         # update fields of flight
         detect_airfield(beacon, flight) # updates airfield and distance to airfield
