@@ -670,7 +670,7 @@ log.info("=========")
 
 
 def connect_to_queue():
-    connection = pika.BlockingConnection(pika.ConnectionParameters(config['TRACKER']['rabbit_mq_host']))
+    connection = pika.BlockingConnection(pika.ConnectionParameters(config['TRACKER']['rabbit_mq_host'],heartbeat=0))
     channel = connection.channel()
 
     channel.basic_consume(queue='received_beacons',
