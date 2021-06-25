@@ -197,8 +197,12 @@ class Flight:
             if launch_type in updatable_launch_types:
                 self.launch_type = updatable_launch_types
             else:
-                log.error('Cannot change launch type to non-failure type during launch')
-        redis_client.set('flight_tracker_' + self.address, pickle.dumps(self))
+                log.error('Cannot change launch type for {} to non-failure type ({} from {}) during launch'.format(
+                    self.registration,
+                    launch_type,
+                    self.launch_type
+                ))
+            redis_client.set('flight_tracker_' + self.address, pickle.dumps(self))
 
     def agl(self):
         if self.nearest_airfield:

@@ -21,7 +21,7 @@ config.read('config.ini')
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 log = logging.getLogger(__name__)
 
-mq_connection = pika.BlockingConnection(pika.ConnectionParameters(config['TRACKER']['rabbit_mq_host']))
+mq_connection = pika.BlockingConnection(pika.ConnectionParameters(config['TRACKER']['rabbit_mq_host'], heartbeat=0))
 mq_channel = mq_connection.channel()
 
 # beacon_count = 0
@@ -70,6 +70,8 @@ def filter_queue_beacon(raw_message):
             log.debug('Beacon type field not found: {}'.format(e))
     except ParseError as e:
         log.error('Parse error: {}'.format(e))
+    except NotImplementedError as e:
+        log.error('Not implemented error: {}'.format(e))
     end = time.time()
     log.info('Beacon took {} to process'.format(end - start))
 

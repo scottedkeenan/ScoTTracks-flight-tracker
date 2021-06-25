@@ -96,7 +96,7 @@ class Aerotow:
             log.info("Skipping aerotow tracking: this beacon isn't from the common receiver")
             return
         if beacon['timestamp'] < list(self._beacons.keys())[0]:
-            # exit early if there if this is from the past
+            # exit early if this is from the past
             log.info("Skipping aerotow tracking: this beacon is from before the launch was detected")
             return
 
