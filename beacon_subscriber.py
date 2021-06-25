@@ -21,7 +21,7 @@ config.read('config.ini')
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 log = logging.getLogger(__name__)
 
-mq_connection = pika.BlockingConnection(pika.ConnectionParameters(config['TRACKER']['rabbit_mq_host']))
+mq_connection = pika.BlockingConnection(pika.ConnectionParameters(config['TRACKER']['rabbit_mq_host'], heartbeat=0))
 mq_channel = mq_connection.channel()
 
 # beacon_count = 0
