@@ -464,7 +464,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                                     except StatisticsError:
                                         log.info("No data to average, skipping")
                                 log.info('{} detected aerotow (unknown tug) or self launching at {}'.format(flight.registration, flight.nearest_airfield['nice_name']))
-                                flight.set_launch_type('aerotow_sl')
+                                flight.set_launch_type('aerotow_sl', redis_client)
                 elif not flight.launch_complete:
                     flight.launch_complete = True
                     log.info(
