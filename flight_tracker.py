@@ -5,10 +5,6 @@ import logging
 import os
 import pprint
 
-import pika
-from pika.exceptions import StreamLostError
-
-
 import sys
 
 import mysql.connector
@@ -32,6 +28,10 @@ from aerotow import Aerotow
 
 from statistics import mean, StatisticsError
 
+import pika
+from pika.exceptions import StreamLostError
+
+import redis
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -99,6 +99,10 @@ BEACON_CORRECTIONS = import_beacon_correction_data()
 
 log.info(pprint.pformat(BEACON_CORRECTIONS))
 
+redis_client = redis.Redis(host=config['TRACKER']['redis_host'],
+                           port=config['TRACKER']['redis_port'],
+                           db=0)
+
 tracked_aircraft = {}
 
 
@@ -140,6 +144,7 @@ AIRFIELD_LOCATIONS = [x for x in AIRFIELD_DATA.keys()]
 log.debug('Airfields loaded: {}'.format(pprint.pformat(AIRFIELD_LOCATIONS)))
 AIRFIELD_TREE = kdtree.KDTree(AIRFIELD_LOCATIONS)
 
+
 def detect_airfield(beacon, flight):
     """
     :param beacon:
@@ -169,14 +174,24 @@ def detect_airfield(beacon, flight):
 
 
 def detect_tug(tracked_aircraft, flight):
-    log.debug('Looking for a tug launch for {}'.format(flight.registration))
-    for address in tracked_aircraft:
-        if flight.aircraft_type == 2:
-            log.info('This IS a tug!')
-            return False
-        if address == flight.address:
+    log.info('Looking for a tug launch for {}({})'.format(flight.registration, flight.address))
+    if flight.aircraft_type == 2:
+        log.info('This IS a tug!')
+        return False
+    # use redis geo to find nearby aircraft
+    near_aircraft = redis_client.georadiusbymember('aircraft',
+                                                   flight.address,
+                                                   float(config['TRACKER']['airfield_detection_radius']),
+                                                   'km')
+    near_aircraft.remove(flight.address.encode())
+    log.info('{} nearby aircraft found'.format(len(near_aircraft)))
+    log.info(pprint.pformat(near_aircraft))
+    for address in near_aircraft:
+        try:
+            other_flight = tracked_aircraft[address.decode()]
+        except KeyError:
+            log.info('Address {} not in tracked aircraft'.format(address.decode()))
             continue
-        other_flight = tracked_aircraft[address]
         if other_flight.takeoff_timestamp and other_flight.takeoff_airfield == flight.takeoff_airfield:
             time_difference = (other_flight.takeoff_timestamp - flight.takeoff_timestamp).total_seconds()
             if -10 < time_difference < 10:
@@ -235,7 +250,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
         # Remove outdated tracking
         if datetime.date(tracked_aircraft[beacon['address']].timestamp) < datetime.today().date():
             tracked_aircraft.pop(beacon['address'])
-            log.debug("Removed outdated tracking for: {}".format(beacon['address']))
+            log.info("Removed outdated tracking for: {}".format(beacon['address']))
         else:
             log.debug('Tracking checked and is up to date')
 
@@ -283,7 +298,6 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
             registration = 'UNKNOWN'
             aircraft_model = None
             competition_number = None
-
 
         log.info('Aircraft {}/{} not tracked yet'.format(registration, beacon['address']))
 
@@ -382,7 +396,6 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     db_conn.commit()
                 # 2.5 naut. miles
                 else:
-                    #todo: give airfields a max launch detection range
                     # Not near airfield at all
                     log.info("Adding aircraft {} as launched near(ish) {} but outside 2.5 nautical mile radius".format(
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
@@ -449,8 +462,8 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                                         flight.average_launch_climb_rate = mean(flight.launch_climb_rates.values())
                                     except StatisticsError:
                                         log.info("No data to average, skipping")
-                                log.info('{} detected aerotow (unknown tug) or self launching at {}'.format(flight.registration, flight.nearest_airfield['nice_name']))
-                                flight.set_launch_type('aerotow_sl')
+                                    log.info('{} detected aerotow (unknown tug) or self launching at {}'.format(flight.registration, flight.nearest_airfield['nice_name']))
+                                    flight.set_launch_type('aerotow_sl')
                 elif not flight.launch_complete:
                     flight.launch_complete = True
                     log.info(
@@ -571,6 +584,9 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     tracked_aircraft.pop(flight.address)
         # update flight timestamp
         flight.timestamp = beacon['timestamp']
+
+    # redis cache
+    redis_client.geoadd('aircraft', beacon['longitude'], beacon['latitude'], beacon['address'])
     # log.info('Tracked aircraft =========================')
     # for flight in tracked_aircraft:
     #     log.info(pprint.pformat(tracked_aircraft[flight].to_dict()))
@@ -589,9 +605,9 @@ def process_beacon(ch, method, properties, body):
     # start = time.time()
     try:
         beacon = json.loads(body)
-        try:
-            if beacon['beacon_type'] in ['aprs_aircraft', 'flarm']:
-                log.debug('Aircraft beacon received')
+        if beacon['beacon_type'] in ['aprs_aircraft', 'flarm']:
+            log.debug('Aircraft beacon received')
+            try:
                 if beacon['aircraft_type'] in [1, 2]:
                     try:
                         track_aircraft(beacon, save_beacon, check_date)
@@ -600,8 +616,13 @@ def process_beacon(ch, method, properties, body):
                         raise
                 else:
                     log.debug("Not a glider or tug")
-        except KeyError as e:
-            log.debug('Beacon type field not found: {}'.format(e))
+            except KeyError as e:
+                log.error('Keyerror {} while processing beacon {}'.format(
+                    e,
+                    pprint.pformat(beacon)
+                ))
+        # except KeyError as e:
+        #     log.info('Beacon type field not found: {}'.format(e))
     except ParseError as e:
         log.error('Parse error: {}'.format(e))
     end = time.time()
@@ -691,7 +712,6 @@ if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
-        print('Interrupted')
         db_conn.close()
         try:
             sys.exit(0)

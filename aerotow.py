@@ -2,8 +2,10 @@ import datetime
 import pprint
 from geopy import distance as measure_distance
 import os
-from statistics import mean
 import logging
+
+from statistics import mean
+from collections import Counter
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 log = logging.getLogger(__name__)
@@ -136,11 +138,10 @@ class Aerotow:
             log.info(pprint.pformat(self.flight_beacon_counts))
             if list(self.flight_beacon_counts.values())[0] > 10 and list(self.flight_beacon_counts.values())[0] > 10:
                 # set the pair to use only the most commonly seen beacon
-                flight_addressess = list(self.flights.keys())
-                if not self.flights[flight_addressess[0]].launch_rec_name:
-                    from collections import Counter
+                flight_addresses = list(self.flights.keys())
+                if not self.flights[flight_addresses[0]].launch_rec_name:
                     data = Counter(
-                        [i['receiver'] for i in self.flights[flight_addressess[0]].last_pings] + [i['receiver'] for i in self.flights[flight_addressess[1]].last_pings])
+                        [i['receiver'] for i in self.flights[flight_addresses[0]].last_pings] + [i['receiver'] for i in self.flights[flight_addresses[1]].last_pings])
                     common_rec_name = (data.most_common(1)[0][0])
                     log.info('Common receiver name for the aerotow pair is {}'.format(common_rec_name))
 

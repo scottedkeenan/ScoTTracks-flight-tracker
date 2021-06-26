@@ -2,7 +2,6 @@ import configparser
 import json
 import logging
 import os
-import pprint
 
 import pika
 
@@ -97,6 +96,7 @@ def connect_to_ogn_and_run(filter_string):
         try:
             client.run(callback=filter_queue_beacon, autoreconnect=True)
         except KeyboardInterrupt:
+            print('Interrupted')
             client.disconnect()
             raise
         except AttributeError as err:
