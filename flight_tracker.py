@@ -258,7 +258,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
         try:
             device = DEVICE_DICT[beacon['address']]
         except KeyError:
-            log.error('Device dict not found for {}'.format(beacon['address']))
+            log.error('Device dict entry not found for {}'.format(beacon['address']))
             device = None
 
         if device:
@@ -329,7 +329,6 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                 new_flight.launch()
                 add_flight(db_conn.cursor(), new_flight.to_dict())
                 db_conn.commit()
-
         else:
             new_flight.status = 'ground'
         log.info("Starting to track aircraft {}/{} {}km from {} with status {}".format(registration,
@@ -345,6 +344,8 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
         log.info("Ground speed: {} | Alt: {} | time: {}".format(beacon['ground_speed'], beacon['altitude'], beacon['timestamp']))
 
         tracked_aircraft[beacon['address']] = new_flight
+        # Update redis for geospatial tracking
+        redis_client.geoadd('aircraft', beacon['longitude'], beacon['latitude'], beacon['address'])
     else:
         log.debug('Updating tracked aircraft')
         flight = tracked_aircraft[beacon['address']]
@@ -355,6 +356,9 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
             # log.info('Skipping beacon from the past')
             # log.info(f"{flight.registration} Beacon {beacon['timestamp']}, flight {flight.timestamp}, rec {beacon['receiver_name']}")
             return
+
+        # Update redis for geospatial tracking
+        redis_client.geoadd('aircraft', beacon['longitude'], beacon['latitude'], beacon['address'])
 
         # update fields of flight
         detect_airfield(beacon, flight) # updates airfield and distance to airfield
@@ -585,8 +589,6 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
         # update flight timestamp
         flight.timestamp = beacon['timestamp']
 
-    # redis cache
-    redis_client.geoadd('aircraft', beacon['longitude'], beacon['latitude'], beacon['address'])
     # log.info('Tracked aircraft =========================')
     # for flight in tracked_aircraft:
     #     log.info(pprint.pformat(tracked_aircraft[flight].to_dict()))
