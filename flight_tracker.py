@@ -8,7 +8,6 @@ import pprint
 import pika
 from pika.exceptions import StreamLostError
 
-
 import sys
 
 import mysql.connector
@@ -105,16 +104,12 @@ log.info(pprint.pformat(BEACON_CORRECTIONS))
 tracked_aircraft = {}
 
 connection_pool = pooling.MySQLConnectionPool(pool_name="pynative_pool",
-                                                  pool_size=5,
-                                                  pool_reset_session=True,
-                                                  host=config['TRACKER']['database_host'],
-                                                  database=config['TRACKER']['database'],
-                                                  user=config['TRACKER']['database_user'],
-                                                  password=config['TRACKER']['database_password'])
-
-print("Printing connection pool properties ")
-print("Connection Pool Name - ", connection_pool.pool_name)
-print("Connection Pool Size - ", connection_pool.pool_size)
+                                              pool_size=5,
+                                              pool_reset_session=True,
+                                              host=config['TRACKER']['database_host'],
+                                              database=config['TRACKER']['database'],
+                                              user=config['TRACKER']['database_user'],
+                                              password=config['TRACKER']['database_password'])
 
 
 def make_database_connection(_retry_counter=0):
