@@ -13,6 +13,9 @@ import sys
 
 import mysql.connector
 
+from mysql.connector import Error
+from mysql.connector import pooling
+
 from ogn.client import AprsClient
 from ogn.parser import parse, ParseError
 
@@ -101,22 +104,30 @@ log.info(pprint.pformat(BEACON_CORRECTIONS))
 
 tracked_aircraft = {}
 
+connection_pool = pooling.MySQLConnectionPool(pool_name="pynative_pool",
+                                                  pool_size=5,
+                                                  pool_reset_session=True,
+                                                  host=config['TRACKER']['database_host'],
+                                                  database=config['TRACKER']['database'],
+                                                  user=config['TRACKER']['database_user'],
+                                                  password=config['TRACKER']['database_password'])
 
-def make_database_connection(retry_counter=0):
-    if retry_counter > 5:
-        log.error("Failed to connect to database after 5 retries")
-        return
-    try:
-        conn = mysql.connector.connect(
-            user=config['TRACKER']['database_user'],
-            password=config['TRACKER']['database_password'],
-            host=config['TRACKER']['database_host'],
-            database=config['TRACKER']['database'])
-        return conn
-    except mysql.connector.Error as err:
-        log.error(err)
-        retry_counter += 1
-        return make_database_connection(retry_counter)
+print("Printing connection pool properties ")
+print("Connection Pool Name - ", connection_pool.pool_name)
+print("Connection Pool Size - ", connection_pool.pool_size)
+
+
+def make_database_connection(_retry_counter=0):
+    connection_object = connection_pool.get_connection()
+
+    if connection_object.is_connected():
+        db_Info = connection_object.get_server_info()
+        print("Connected to MySQL database using connection pool ... MySQL Server version on ", db_Info)
+
+        cursor = connection_object.cursor()
+        cursor.execute("select database();")
+        record = cursor.fetchone()
+        print("Your connected to - ", record)
 
 
 db_conn = make_database_connection()
@@ -139,6 +150,8 @@ for airfield in get_airfields_for_countries(db_conn.cursor(), config['TRACKER'][
 AIRFIELD_LOCATIONS = [x for x in AIRFIELD_DATA.keys()]
 log.debug('Airfields loaded: {}'.format(pprint.pformat(AIRFIELD_LOCATIONS)))
 AIRFIELD_TREE = kdtree.KDTree(AIRFIELD_LOCATIONS)
+
+db_conn.close()
 
 def detect_airfield(beacon, flight):
     """
@@ -609,7 +622,7 @@ def process_beacon(ch, method, properties, body):
     # log.info('Beacon took {} to process'.format(end - start))
     # log.info('Beacon count: {}'.format(beacon_count))
 
-
+db_conn = make_database_connection()
 
 log.info("Checking database for active flights")
 if db_conn:
