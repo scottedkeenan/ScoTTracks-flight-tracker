@@ -112,7 +112,7 @@ connection_pool = pooling.MySQLConnectionPool(pool_name="pynative_pool",
                                               password=config['TRACKER']['database_password'])
 
 
-def make_database_connection(_retry_counter=0):
+def make_database_connection():
     connection_object = connection_pool.get_connection()
     if connection_object.is_connected():
         return connection_object
