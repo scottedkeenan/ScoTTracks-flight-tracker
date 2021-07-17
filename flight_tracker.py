@@ -387,7 +387,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     db_conn.commit()
                     db_conn.close()
                 # 2.5 naut. miles
-                else:
+                elif flight.distance_to_nearest_airfield < 10:
                     #todo: give airfields a max launch detection range
                     # Not near airfield at all
                     log.info("Adding aircraft {} as launched near(ish) {} but outside 2.5 nautical mile radius".format(
