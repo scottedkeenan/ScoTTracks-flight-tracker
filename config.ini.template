@@ -38,7 +38,8 @@ redis_port =
 ; 12 hours
 redis_expiry = 43200
 
-save_beacon = False
+;airfield, all, todo:aircraft
+save_beacon = all
 check_date = True
 
 [AWS]

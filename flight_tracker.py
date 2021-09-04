@@ -10,9 +10,6 @@ from pika.exceptions import StreamLostError
 
 import sys
 
-import mysql.connector
-
-from mysql.connector import Error
 from mysql.connector import pooling
 
 from ogn.client import AprsClient
@@ -117,19 +114,19 @@ def make_database_connection():
     if connection_object.is_connected():
         return connection_object
 
-
 db_conn = make_database_connection()
 
 AIRFIELD_DATA = {}
-for airfield in get_airfields_for_countries(db_conn.cursor(), config['TRACKER']['track_countries'].split(',')):
+for airfield in get_airfields_for_countries(db_conn.cursor(dictionary=True), config['TRACKER']['track_countries'].split(',')):
     airfield_json = {
-        'id': airfield[0],
-        'name': airfield[1],
-        'nice_name': airfield[11] if airfield[11] else airfield[1],
-        'latitude': airfield[4],
-        'longitude': airfield[5],
-        'elevation': airfield[6],
-        'launch_type_detection': True if airfield[17] == 1 else False
+        'id': airfield['id'],
+        'name': airfield['name'],
+        'nice_name': airfield['nice_name'] if airfield['nice_name'] else airfield['name'],
+        'latitude': airfield['latitude'],
+        'longitude': airfield['longitude'],
+        'elevation': airfield['elevation'],
+        'launch_type_detection': True if airfield['launch_type_detection'] == 1 else False,
+        'follow_aircraft': True if airfield['follow_aircraft'] == 1 else False
     }
     AIRFIELD_DATA[(airfield_json['latitude'], airfield_json['longitude'])] = airfield_json
 
@@ -184,14 +181,14 @@ def detect_tug(tracked_aircraft, flight):
                     log.info("Tug found: {} is towing {} at {}".format(
                         other_flight.address if other_flight.registration == 'UNKNOWN' else other_flight.registration,
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
-                        flight.nearest_airfield['nice_name']))
+                        flight.nearest_airfield['name']))
                     flight.launch_type = 'aerotow_glider'
                     other_flight.launch_type = 'aerotow_tug'
                 else:
                     log.info("Aerotow pair found, can't tell which is the tug though: {} is towing with {} at {}".format(
                         other_flight.address if other_flight.registration == 'UNKNOWN' else other_flight.registration,
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
-                        flight.nearest_airfield['nice_name']))
+                        flight.nearest_airfield['name']))
                     flight.launch_type = 'aerotow_pair'
                     other_flight.launch_type = 'aerotow_pair'
                 aerotow = Aerotow(flight, other_flight)
@@ -202,7 +199,69 @@ def detect_tug(tracked_aircraft, flight):
                 return True
 
 
-def track_aircraft(beacon, save_beacon=True, check_date=True):
+def save_beacon(beacon, flight):
+
+    # Types:
+    # 'all': Save all beacons
+    # 'aircraft': Save beacons of selected aircraft (TODO)
+    # 'airfield': Save beacons of selected airfields
+    # False: No saving of beacons
+
+    config_save_beacon = config['TRACKER']['save_beacon']
+
+    # log.info('Config says: {}'.format(config_save_beacon))
+
+    if config_save_beacon == 'False':
+        log.debug('Not Saving beacon for {}'.format(flight.registration if flight.registration else flight.address))
+        return
+
+    # We want to save all beacons
+    if config_save_beacon == 'all':
+        log.debug(
+            'Saving beacon (all) for {} at {}.'.format(
+                flight.registration if flight.registration else flight.address,
+                flight.takeoff_airfield if flight.takeoff_airfield else flight.nearest_airfield,
+            ))
+        db_conn = make_database_connection()
+        add_beacon(db_conn.cursor(), beacon)
+        db_conn.commit()
+        db_conn.close()
+        return
+
+    # We want to save all beacons from a specific aircraft
+    if config_save_beacon == 'aircraft':
+        log.debug('Saving beacon (aircraft) for {}'.format(flight.registration if flight.registration else flight.address))
+        log.debug('Not implemented!')
+        # add_beacon(db_conn.cursor(), beacon)
+        # db_conn.commit()
+        # db_conn.close()
+
+    # We want to save all beacons from this airfield
+    if config_save_beacon == 'airfield':
+        try:
+            takeoff_airfield_follows = flight.takeoff_airfield['follow_aircraft']
+        except TypeError:
+            takeoff_airfield_follows = False
+        try:
+            nearest_airfield_follows = flight.nearest_airfield['follow_aircraft']
+        except TypeError:
+            nearest_airfield_follows = False
+        if takeoff_airfield_follows or nearest_airfield_follows:
+            log.debug(
+                'Saving beacon (airfield) for {} at {}. Nearest: {} Takeoff: {}'.format(
+                    flight.registration if flight.registration else flight.address,
+                    flight.takeoff_airfield if flight.takeoff_airfield else flight.nearest_airfield,
+                    nearest_airfield_follows,
+                    takeoff_airfield_follows
+                ))
+            db_conn = make_database_connection()
+            add_beacon(db_conn.cursor(), beacon)
+            db_conn.commit()
+            db_conn.close()
+            return
+
+
+def track_aircraft(beacon, check_date=True):
     # log.info("track aircraft!")
     # log.info(pprint.pformat(beacon))
 
@@ -214,15 +273,6 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
 
     timestamp = datetime(*time.strptime(beacon['timestamp'], '%Y-%m-%dT%H:%M:%S')[:6])
     beacon['timestamp'] = timestamp
-
-    # if not db_conn:
-    #     log.error("Unable to connect to database, attempting to connect")
-    #     db_conn = make_database_connection()
-
-    if save_beacon:
-        db_conn = make_database_connection()
-        add_beacon(db_conn.cursor(), beacon)
-        db_conn.close()
 
     try:
         beacon['altitude'] = beacon['altitude'] + BEACON_CORRECTIONS[beacon['receiver_name']]
@@ -261,7 +311,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
 
             if DEVICE_DICT[beacon['address']]['TRACKED'] != 'Y':
                 log.warning('Aircraft {}/{} requests no track'.format(registration, beacon['address']))
-                no_track_flight =  Flight(
+                no_track_flight = Flight(
                     None,
                     beacon['address'],
                     'no_track',
@@ -323,7 +373,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
         log.info("Starting to track aircraft {}/{} {}km from {} with status {}".format(registration,
                                                                                        new_flight.address,
                                                                                        new_flight.distance_to_nearest_airfield,
-                                                                                       new_flight.nearest_airfield['nice_name'],
+                                                                                       new_flight.nearest_airfield['name'],
                                                                                        new_flight.status))
         log.info("Extra detail for {}/{}: Model: {}, CN: {}".format(registration,
                                                                     new_flight.address,
@@ -333,11 +383,14 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
         log.info("Ground speed: {} | Alt: {} | time: {}".format(beacon['ground_speed'], beacon['altitude'], beacon['timestamp']))
 
         tracked_aircraft[beacon['address']] = new_flight
+        save_beacon(beacon, new_flight)
     else:
         log.debug('Updating tracked aircraft')
         flight = tracked_aircraft[beacon['address']]
         if flight.aircraft_type == 'no_track':
             return
+
+        save_beacon(beacon, flight)
 
         if beacon['timestamp'] <= flight.timestamp:
             # log.info('Skipping beacon from the past')
@@ -444,27 +497,27 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                             if len(flight.launch_beacon_heights) >= 5:
                                 log.debug('Deciding launch type for {} at {} @{} based on gradient: {}[{}]'.format(
                                     flight.registration,
-                                    flight.nearest_airfield['nice_name'],
+                                    flight.nearest_airfield['name'],
                                     flight.takeoff_timestamp,
                                     flight.launch_gradient(),
                                     beacon['receiver_name']
                                 ))
                                 if flight.launch_gradient() > float(config['TRACKER']['winch_detection_gradient']):
-                                    log.info('{} detected winch launching at {}'.format(flight.registration, flight.nearest_airfield['nice_name']))
+                                    log.info('{} detected winch launching at {}'.format(flight.registration, flight.nearest_airfield['name']))
                                     flight.set_launch_type('winch')
                                 elif len(flight.launch_beacon_heights) >= 10:
                                     try:
                                         flight.average_launch_climb_rate = mean(flight.launch_climb_rates.values())
                                     except StatisticsError:
                                         log.info("No data to average, skipping")
-                                log.info('{} detected aerotow (unknown tug) or self launching at {}'.format(flight.registration, flight.nearest_airfield['nice_name']))
+                                log.info('{} detected aerotow (unknown tug) or self launching at {}'.format(flight.registration, flight.nearest_airfield['name']))
                                 flight.set_launch_type('aerotow_sl')
                 elif not flight.launch_complete:
                     flight.launch_complete = True
                     log.info(
                         '{} launch complete (timeout) at {}! Launch type: {}, Launch height: {}, Launch time: {}, Average vertical: {}'.format(
                             flight.address if flight.registration == 'UNKNOWN' else flight.registration,
-                            flight.nearest_airfield['nice_name'],
+                            flight.nearest_airfield['name'],
                             flight.launch_type,
                             flight.launch_height * 3.281,
                             time_since_launch,
@@ -480,7 +533,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                     log.info(
                         '{} winch launch complete at {}! Launch type: {}, Launch height: {}, Launch time: {}, Average vertical: {}'.format(
                             flight.address if flight.registration == 'UNKNOWN' else flight.registration,
-                            flight.nearest_airfield['nice_name'],
+                            flight.nearest_airfield['name'],
                             flight.launch_type,
                             flight.launch_height * 3.281,
                             time_since_launch,
@@ -524,7 +577,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                                 '{} {} launch complete at {}! Launch type: {}, Launch height: {}, Launch time: {}, Average vertical: {}, Recent Average Vertical: {}, Difference: {}, Sink/lift: {}'.format(
                                     flight.address if flight.registration == 'UNKNOWN' else flight.registration,
                                     flight.launch_type,
-                                    flight.nearest_airfield['nice_name'],
+                                    flight.nearest_airfield['name'],
                                     flight.launch_type,
                                     flight.launch_height * 3.281,
                                     time_since_launch,
@@ -585,8 +638,7 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
                         )
                     tracked_aircraft.pop(flight.address)
                     db_conn.close()
-        # update flight timestamp
-        flight.timestamp = beacon['timestamp']
+
     # log.info('Tracked aircraft =========================')
     # for flight in tracked_aircraft:
     #     log.info(pprint.pformat(tracked_aircraft[flight].to_dict()))
@@ -595,8 +647,6 @@ def track_aircraft(beacon, save_beacon=True, check_date=True):
 import time
 
 beacon_count = 0
-
-save_beacon = True if config['TRACKER']['save_beacon'] == 'True' else False
 check_date = True if config['TRACKER']['check_date'] == 'True' else False
 
 
@@ -611,7 +661,7 @@ def process_beacon(ch, method, properties, body):
                 log.debug('Aircraft beacon received')
                 if beacon['aircraft_type'] in [1, 2]:
                     try:
-                        track_aircraft(beacon, save_beacon, check_date)
+                        track_aircraft(beacon, check_date)
                     except TypeError as e:
                         log.info('Type error while tracking: {}'.format(e))
                         raise
@@ -667,23 +717,6 @@ log.info("Database flights =========")
 for aircraft in tracked_aircraft:
     log.info(pprint.pformat(tracked_aircraft[aircraft].to_dict()))
 log.info("=========")
-
-# LIVE get beacons
-
-# def connect_to_ogn_and_run(filter_string):
-#     if len(filter_string.split(' ')) > 9:
-#         log.error("Too many aprs filters")
-#     else:
-#         log.info('Connecting to OGN gateway')
-#         client = AprsClient(aprs_user='N0CALL', aprs_filter=aprs_filter)
-#         client.connect()
-#         try:
-#             client.run(callback=process_beacon, autoreconnect=True)
-#         except KeyboardInterrupt:
-#             client.disconnect()
-#             raise
-#         except AttributeError as err:
-#             log.error(err)
 
 
 def connect_to_queue():
