@@ -228,12 +228,13 @@ def save_beacon(beacon, flight):
         db_conn.close()
         return
 
-    # # We want to save all beacons from a specific aircraft
-    # if config_save_beacon == 'aircraft' and flight.:
-    #     log.info('Saving beacon (aircraft) for {}'.format(flight.registration if flight.registration else flight.address))
-    #     add_beacon(db_conn.cursor(), beacon)
-    #     db_conn.commit()
-    #     db_conn.close()
+    # We want to save all beacons from a specific aircraft
+    if config_save_beacon == 'aircraft':
+        log.debug('Saving beacon (aircraft) for {}'.format(flight.registration if flight.registration else flight.address))
+        log.debug('Not implemented!')
+        # add_beacon(db_conn.cursor(), beacon)
+        # db_conn.commit()
+        # db_conn.close()
 
     # We want to save all beacons from this airfield
     if config_save_beacon == 'airfield':
