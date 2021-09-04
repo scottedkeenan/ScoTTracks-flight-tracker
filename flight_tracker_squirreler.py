@@ -368,7 +368,7 @@ def get_airfields_for_countries(cursor, country_codes):
     placeholders = ', '.join(placeholder for unused in country_codes)
 
     get_airfields_sql = """
-    SELECT airfields.*, sites.nice_name, sites.follow_aircraft, sites.launch_type_detection
+    SELECT airfields.*, sites.nice_name, sites.launch_type_detection
     FROM airfields
     LEFT JOIN sites
     ON airfields.id = sites.airfield_id
