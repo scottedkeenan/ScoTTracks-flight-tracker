@@ -212,12 +212,12 @@ def save_beacon(beacon, flight):
     # log.info('Config says: {}'.format(config_save_beacon))
 
     if config_save_beacon == 'False':
-        log.info('Not Saving beacon for {}'.format(flight.registration if flight.registration else flight.address))
+        log.debug('Not Saving beacon for {}'.format(flight.registration if flight.registration else flight.address))
         return
 
     # We want to save all beacons
     if config_save_beacon == 'all':
-        log.info(
+        log.debug(
             'Saving beacon (all) for {} at {}.'.format(
                 flight.registration if flight.registration else flight.address,
                 flight.takeoff_airfield if flight.takeoff_airfield else flight.nearest_airfield,
@@ -246,7 +246,7 @@ def save_beacon(beacon, flight):
         except TypeError:
             nearest_airfield_follows = False
         if takeoff_airfield_follows or nearest_airfield_follows:
-            log.info(
+            log.debug(
                 'Saving beacon (airfield) for {} at {}. Nearest: {} Takeoff: {}'.format(
                     flight.registration if flight.registration else flight.address,
                     flight.takeoff_airfield if flight.takeoff_airfield else flight.nearest_airfield,
