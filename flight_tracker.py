@@ -181,14 +181,14 @@ def detect_tug(tracked_aircraft, flight):
                     log.info("Tug found: {} is towing {} at {}".format(
                         other_flight.address if other_flight.registration == 'UNKNOWN' else other_flight.registration,
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
-                        flight.nearest_airfield['nice_name']))
+                        flight.nearest_airfield['name']))
                     flight.launch_type = 'aerotow_glider'
                     other_flight.launch_type = 'aerotow_tug'
                 else:
                     log.info("Aerotow pair found, can't tell which is the tug though: {} is towing with {} at {}".format(
                         other_flight.address if other_flight.registration == 'UNKNOWN' else other_flight.registration,
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
-                        flight.nearest_airfield['nice_name']))
+                        flight.nearest_airfield['name']))
                     flight.launch_type = 'aerotow_pair'
                     other_flight.launch_type = 'aerotow_pair'
                 aerotow = Aerotow(flight, other_flight)
@@ -310,7 +310,7 @@ def track_aircraft(beacon, check_date=True):
 
             if DEVICE_DICT[beacon['address']]['TRACKED'] != 'Y':
                 log.warning('Aircraft {}/{} requests no track'.format(registration, beacon['address']))
-                no_track_flight =  Flight(
+                no_track_flight = Flight(
                     None,
                     beacon['address'],
                     'no_track',
@@ -372,7 +372,7 @@ def track_aircraft(beacon, check_date=True):
         log.info("Starting to track aircraft {}/{} {}km from {} with status {}".format(registration,
                                                                                        new_flight.address,
                                                                                        new_flight.distance_to_nearest_airfield,
-                                                                                       new_flight.nearest_airfield['nice_name'],
+                                                                                       new_flight.nearest_airfield['name'],
                                                                                        new_flight.status))
         log.info("Extra detail for {}/{}: Model: {}, CN: {}".format(registration,
                                                                     new_flight.address,
@@ -496,27 +496,27 @@ def track_aircraft(beacon, check_date=True):
                             if len(flight.launch_beacon_heights) >= 5:
                                 log.debug('Deciding launch type for {} at {} @{} based on gradient: {}[{}]'.format(
                                     flight.registration,
-                                    flight.nearest_airfield['nice_name'],
+                                    flight.nearest_airfield['name'],
                                     flight.takeoff_timestamp,
                                     flight.launch_gradient(),
                                     beacon['receiver_name']
                                 ))
                                 if flight.launch_gradient() > float(config['TRACKER']['winch_detection_gradient']):
-                                    log.info('{} detected winch launching at {}'.format(flight.registration, flight.nearest_airfield['nice_name']))
+                                    log.info('{} detected winch launching at {}'.format(flight.registration, flight.nearest_airfield['name']))
                                     flight.set_launch_type('winch')
                                 elif len(flight.launch_beacon_heights) >= 10:
                                     try:
                                         flight.average_launch_climb_rate = mean(flight.launch_climb_rates.values())
                                     except StatisticsError:
                                         log.info("No data to average, skipping")
-                                log.info('{} detected aerotow (unknown tug) or self launching at {}'.format(flight.registration, flight.nearest_airfield['nice_name']))
+                                log.info('{} detected aerotow (unknown tug) or self launching at {}'.format(flight.registration, flight.nearest_airfield['name']))
                                 flight.set_launch_type('aerotow_sl')
                 elif not flight.launch_complete:
                     flight.launch_complete = True
                     log.info(
                         '{} launch complete (timeout) at {}! Launch type: {}, Launch height: {}, Launch time: {}, Average vertical: {}'.format(
                             flight.address if flight.registration == 'UNKNOWN' else flight.registration,
-                            flight.nearest_airfield['nice_name'],
+                            flight.nearest_airfield['name'],
                             flight.launch_type,
                             flight.launch_height * 3.281,
                             time_since_launch,
@@ -532,7 +532,7 @@ def track_aircraft(beacon, check_date=True):
                     log.info(
                         '{} winch launch complete at {}! Launch type: {}, Launch height: {}, Launch time: {}, Average vertical: {}'.format(
                             flight.address if flight.registration == 'UNKNOWN' else flight.registration,
-                            flight.nearest_airfield['nice_name'],
+                            flight.nearest_airfield['name'],
                             flight.launch_type,
                             flight.launch_height * 3.281,
                             time_since_launch,
@@ -576,7 +576,7 @@ def track_aircraft(beacon, check_date=True):
                                 '{} {} launch complete at {}! Launch type: {}, Launch height: {}, Launch time: {}, Average vertical: {}, Recent Average Vertical: {}, Difference: {}, Sink/lift: {}'.format(
                                     flight.address if flight.registration == 'UNKNOWN' else flight.registration,
                                     flight.launch_type,
-                                    flight.nearest_airfield['nice_name'],
+                                    flight.nearest_airfield['name'],
                                     flight.launch_type,
                                     flight.launch_height * 3.281,
                                     time_since_launch,
