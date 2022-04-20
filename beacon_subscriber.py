@@ -52,8 +52,8 @@ def queue_beacon(beacon):
 
 
 def filter_queue_beacon(raw_message):
-    log.info('Beacon process start')
-    start = time.time()
+    # log.info('Beacon process start')
+    # start = time.time()
     try:
         beacon = parse(raw_message)
         try:
@@ -72,8 +72,8 @@ def filter_queue_beacon(raw_message):
         log.error('Parse error: {}'.format(e))
     except NotImplementedError as e:
         log.error('Not implemented error: {}'.format(e))
-    end = time.time()
-    log.info('Beacon took {} to process'.format(end - start))
+    # end = time.time()
+    # log.info('Beacon took {} to process'.format(end - start))
 
 
 # LIVE get beacons
