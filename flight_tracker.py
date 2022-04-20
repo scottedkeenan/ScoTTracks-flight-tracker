@@ -566,18 +566,21 @@ def track_aircraft(beacon, check_date=True):
                 if flight.launch_type in ['aerotow_glider', 'aerotow_pair', 'aerotow_tug']:
                     print('is THIS HAPPENING A LOT foR {}?'.format(flight.address if flight.registration == 'UNKNOWN' else flight.registration))
                     try:
-                        flight.update_aerotow(beacon, redis_client)
+                        flight.update_aerotow(beacon)
                         redis_client.set('flight_tracker_' + flight.tug.address, pickle.dumps(flight.tug))
-                        db_conn = make_database_connection()
-                        update_flight(db_conn.cursor(), flight.tug.to_dict())
-                        db_conn.commit()
-                        db_conn.close()
+                        # todo: check this removal - this was hogging the database, making connections every time the
+                        # todo: towing aircraft were beaconed
+                        # db_conn = make_database_connection()
+                        # update_flight(db_conn.cursor(), flight.to_dict())
+                        # update_flight(db_conn.cursor(), flight.tug.to_dict())
+                        # db_conn.commit()
+                        # db_conn.close()
                     except AttributeError as err:
-                            log.error(err)
-                            log.error(
-                                'Something went wrong with aerotow update for {}/{}, aborting'.format(flight.registration,
-                                                                                               flight.address))
-                            flight.aerotow.abort()
+                        log.error(err)
+                        log.error(
+                            'Something went wrong with aerotow update for {}/{}, aborting'.format(flight.registration,
+                                                                                                  flight.address))
+                        flight.aerotow.abort()
 
                 if flight.launch_type in ['aerotow_sl', 'tug']:
                     try:
@@ -612,7 +615,7 @@ def track_aircraft(beacon, check_date=True):
                             db_conn.close()
                     except StatisticsError:
                         log.info("No data to average, skipping")
-
+            #todo: Do we need the 'air' check?
             elif flight.status == 'air'\
                     and beacon['ground_speed'] < float(config['TRACKER']['landing_detection_speed'])\
                     and flight.agl() < float(config['TRACKER']['landing_detection_agl'])\
