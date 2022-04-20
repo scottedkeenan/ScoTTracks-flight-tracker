@@ -120,10 +120,11 @@ def make_database_connection():
     if connection_object.is_connected():
         return connection_object
 
-db_conn = make_database_connection()
+
+airfield_data_db_conn = make_database_connection()
 
 AIRFIELD_DATA = {}
-for airfield in get_airfields_for_countries(db_conn.cursor(dictionary=True), config['TRACKER']['track_countries'].split(',')):
+for airfield in get_airfields_for_countries(airfield_data_db_conn.cursor(dictionary=True), config['TRACKER']['track_countries'].split(',')):
     airfield_json = {
         'id': airfield['id'],
         'name': airfield['name'],
@@ -140,7 +141,8 @@ AIRFIELD_LOCATIONS = [x for x in AIRFIELD_DATA.keys()]
 log.debug('Airfields loaded: {}'.format(pprint.pformat(AIRFIELD_LOCATIONS)))
 AIRFIELD_TREE = kdtree.KDTree(AIRFIELD_LOCATIONS)
 
-db_conn.close()
+airfield_data_db_conn.close()
+
 
 def detect_airfield(beacon, flight):
     """
@@ -171,7 +173,7 @@ def detect_airfield(beacon, flight):
 
 
 def detect_tug(flight):
-    log.debug('Looking for a tug launch for {}'.format(flight.registration))
+    log.info('Looking for a tug launch for {}'.format(flight.registration))
     if flight.aircraft_type == 2:
         log.info('This IS a tug!')
         return False
@@ -343,7 +345,6 @@ def track_aircraft(beacon, check_date=True):
             registration = 'UNKNOWN'
             aircraft_model = None
             competition_number = None
-
 
         log.info('Aircraft {}/{} not tracked yet'.format(registration, beacon['address']))
 
@@ -563,6 +564,7 @@ def track_aircraft(beacon, check_date=True):
                     db_conn.close()
 
                 if flight.launch_type in ['aerotow_glider', 'aerotow_pair', 'aerotow_tug']:
+                    print('is THIS HAPPENING A LOT foR {}?'.format(flight.address if flight.registration == 'UNKNOWN' else flight.registration))
                     try:
                         flight.update_aerotow(beacon, redis_client)
                         redis_client.set('flight_tracker_' + flight.tug.address, pickle.dumps(flight.tug))
@@ -696,14 +698,17 @@ def process_beacon(ch, method, properties, body):
     # log.info('Beacon took {} to process'.format(end - start))
     # log.info('Beacon count: {}'.format(beacon_count))
 
-db_conn = make_database_connection()
+
+active_flights_db_conn = make_database_connection()
 
 log.info("Checking database for active flights")
-if db_conn:
-    database_flights = get_currently_airborne_flights(db_conn.cursor(dictionary=True))
+if active_flights_db_conn:
+    database_flights = get_currently_airborne_flights(active_flights_db_conn.cursor(dictionary=True))
 else:
     log.error('Unable to retrieve database flights')
     database_flights = {}
+
+active_flights_db_conn.close()
 
 for db_flight in database_flights:
     db_tracked_flight = Flight(db_flight['airfield'],
