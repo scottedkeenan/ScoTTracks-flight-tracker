@@ -338,7 +338,9 @@ def track_aircraft(beacon, check_date=True):
                 no_track_flight.timestamp = beacon['timestamp'].replace(
                     hour=0, minute=0, second=0
                 )
-                tracked_aircraft[beacon['address']] = no_track_flight
+                redis_client.set('flight_tracker_' + beacon['address'], pickle.dumps(no_track_flight),
+                                 ex=config['TRACKER']['redis_expiry'])
+
                 return
         else:
             log.info('Setting device data to unknowns')
