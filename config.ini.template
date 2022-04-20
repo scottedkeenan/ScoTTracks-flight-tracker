@@ -1,0 +1,50 @@
+[TRACKER]
+
+;http://www.aprs-is.net/javAPRSFilter.aspx
+;track_countries = GB,FR,AU,NZ
+
+track_countries =
+
+chart_directory =
+
+database_user =
+database_password =
+database_host =
+database =
+
+device_data_url = http://ddb.glidernet.org/download/
+
+tracking_radius = 550
+airfield_detection_radius = 5
+
+; 15kt
+airborne_detection_speed = 27.78
+
+;196.85 ft
+airborne_detection_agl = 30
+
+landing_detection_speed = 27.78
+landing_detection_agl = 30
+landing_detection_climb_rate = 0.5
+
+winch_detection_gradient = 10
+
+rabbit_mq_host =
+
+draw_alt_graph = False
+
+redis_host =
+redis_port =
+; 12 hours
+redis_expiry = 43200
+
+;airfield, all, todo:aircraft
+save_beacon = all
+check_date = True
+
+[AWS]
+
+ACCESS_KEY =
+SECRET_KEY =
+
+graph_data_bucket_name =
