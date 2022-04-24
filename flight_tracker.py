@@ -548,11 +548,11 @@ def track_aircraft(beacon, check_date=True):
                 if flight.launch_type in ['aerotow_glider', 'aerotow_pair', 'aerotow_tug']:
                     try:
                         flight.update_aerotow(beacon)
-                        db_conn = make_database_connection()
-                        update_flight(db_conn.cursor(), flight.to_dict())
-                        update_flight(db_conn.cursor(), flight.tug.to_dict())
-                        db_conn.commit()
-                        db_conn.close()
+                        #db_conn = make_database_connection()
+                        #update_flight(db_conn.cursor(), flight.to_dict())
+                        #update_flight(db_conn.cursor(), flight.tug.to_dict())
+                        #db_conn.commit()
+                        #db_conn.close()
                     except AttributeError as err:
                             log.error(err)
                             log.error(
