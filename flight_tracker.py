@@ -262,9 +262,6 @@ def save_beacon(beacon, flight):
 
 
 def track_aircraft(beacon, check_date=True):
-    # log.info("track aircraft!")
-    # log.info(pprint.pformat(beacon))
-
     try:
         reference_timestamp = datetime(*time.strptime(beacon['reference_timestamp'], '%Y-%m-%dT%H:%M:%S.%f')[:6])
     except ValueError:
@@ -391,7 +388,7 @@ def track_aircraft(beacon, check_date=True):
         if flight.status == 'ground' and last_flight_timestamp <= timestamp:
 
             if beacon['ground_speed'] > float(config['TRACKER']['airborne_detection_speed']) \
-            and flight.agl() > float(config['TRACKER']['airborne_detection_agl']):
+                    and flight.agl() > float(config['TRACKER']['airborne_detection_agl']):
 
                 # Aircraft launch detected
                 # At airfield
@@ -591,7 +588,6 @@ def track_aircraft(beacon, check_date=True):
                 if last_flight_timestamp <= timestamp:
 
                     # Aircraft landing detected
-                    # todo: landout detection
                     flight.status = 'ground'
                     flight.landing_timestamp = timestamp
                     flight.landing_airfield = flight.nearest_airfield['id']
@@ -622,7 +618,7 @@ def track_aircraft(beacon, check_date=True):
                             db_conn.cursor(),
                             flight
                         )
-                    tracked_aircraft.pop(flight.address)
+                    tracked_aircraft[flight.address].reset()
                     db_conn.close()
 
     # log.info('Tracked aircraft =========================')
@@ -694,7 +690,6 @@ for db_flight in database_flights:
     db_tracked_flight.average_launch_climb_rate = db_flight['average_launch_climb_rate']
     db_tracked_flight.max_launch_climb_rate = db_flight['max_launch_climb_rate']
     db_tracked_flight.launch_complete = True if db_flight['launch_complete'] == 1 else False
-    # todo: other flight as object
     db_tracked_flight.tug = db_flight['tug_registration']
 
     tracked_aircraft[db_tracked_flight.address] = db_tracked_flight
