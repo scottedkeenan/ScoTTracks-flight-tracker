@@ -35,6 +35,11 @@ from statistics import mean, StatisticsError
 config = configparser.ConfigParser()
 config.read('config.ini')
 
+# Queue connection for saving beacons
+mq_connection = pika.BlockingConnection(pika.ConnectionParameters(config['TRACKER']['rabbit_mq_host'], heartbeat=0))
+mq_channel = mq_connection.channel()
+
+
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 log = logging.getLogger(__name__)
 
@@ -199,7 +204,7 @@ def detect_tug(tracked_aircraft, flight):
                 return True
 
 
-def save_beacon(beacon, flight):
+def save_beacon(body, flight):
 
     # Types:
     # 'all': Save all beacons
@@ -209,11 +214,8 @@ def save_beacon(beacon, flight):
 
     config_save_beacon = config['TRACKER']['save_beacon']
 
-    # log.info('Config says: {}'.format(config_save_beacon))
-
     if config_save_beacon == 'False':
         log.debug('Not Saving beacon for {}'.format(flight.registration if flight.registration else flight.address))
-        return
 
     # We want to save all beacons
     if config_save_beacon == 'all':
@@ -222,19 +224,13 @@ def save_beacon(beacon, flight):
                 flight.registration if flight.registration else flight.address,
                 flight.takeoff_airfield if flight.takeoff_airfield else flight.nearest_airfield,
             ))
-        db_conn = make_database_connection()
-        add_beacon(db_conn.cursor(), beacon)
-        db_conn.commit()
-        db_conn.close()
-        return
-
+        mq_channel.basic_publish(exchange='flight_tracker',
+                                 routing_key='beacons_to_save',
+                                 body=body)
     # We want to save all beacons from a specific aircraft
     if config_save_beacon == 'aircraft':
-        log.debug('Saving beacon (aircraft) for {}'.format(flight.registration if flight.registration else flight.address))
-        log.debug('Not implemented!')
-        # add_beacon(db_conn.cursor(), beacon)
-        # db_conn.commit()
-        # db_conn.close()
+        log.warning('Saving beacon (aircraft) for {}'.format(flight.registration if flight.registration else flight.address))
+        log.warning('Not implemented!')
 
     # We want to save all beacons from this airfield
     if config_save_beacon == 'airfield':
@@ -254,14 +250,12 @@ def save_beacon(beacon, flight):
                     nearest_airfield_follows,
                     takeoff_airfield_follows
                 ))
-            db_conn = make_database_connection()
-            add_beacon(db_conn.cursor(), beacon)
-            db_conn.commit()
-            db_conn.close()
-            return
+            mq_channel.basic_publish(exchange='flight_tracker',
+                                     routing_key='beacons_to_save',
+                                     body=body)
 
+def track_aircraft(beacon, body, check_date=True):
 
-def track_aircraft(beacon, check_date=True):
     # log.info("track aircraft!")
     # log.info(pprint.pformat(beacon))
 
@@ -369,14 +363,14 @@ def track_aircraft(beacon, check_date=True):
         log.info("Ground speed: {} | Alt: {} | time: {}".format(beacon['ground_speed'], beacon['altitude'], beacon['timestamp']))
 
         tracked_aircraft[beacon['address']] = new_flight
-        save_beacon(beacon, new_flight)
+        save_beacon(body, new_flight)
     else:
         log.debug('Updating tracked aircraft')
         flight = tracked_aircraft[beacon['address']]
         if flight.aircraft_type == 'no_track':
             return
 
-        save_beacon(beacon, flight)
+        save_beacon(body, flight)
 
         if beacon['timestamp'] <= flight.timestamp:
             # log.info('Skipping beacon from the past')
@@ -642,7 +636,7 @@ def process_beacon(ch, method, properties, body):
                 log.debug('Aircraft beacon received')
                 if beacon['aircraft_type'] in [1, 2]:
                     try:
-                        track_aircraft(beacon, check_date)
+                        track_aircraft(beacon, body, check_date)
                     except TypeError as e:
                         log.info('Type error while tracking: {}'.format(e))
                         raise
