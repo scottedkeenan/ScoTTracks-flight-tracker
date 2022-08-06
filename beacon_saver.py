@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import json
 from datetime import datetime, timedelta
 
@@ -11,7 +13,7 @@ import flight_tracker_squirreler
 def save_beacons_from_queue():
 
     config = configparser.ConfigParser()
-    config.read('config.ini')
+    config.read('/home/scott/PycharmProjects/flight_tracker/config.ini')
 
     # Connect to the rabbit mq queue
 
