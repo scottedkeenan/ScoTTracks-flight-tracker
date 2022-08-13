@@ -222,8 +222,11 @@ def add_beacon(cursor, beacon):
         except KeyError:
             # print("Key {} not found in beacon".format(k))
             insert_row_data.append(None)
-    cursor.execute(insert_row_sql, insert_row_data)
-
+    try:
+        cursor.execute(insert_row_sql, insert_row_data)
+    except e:
+        print("error: " + e)
+        print("beacon data: " + insert_row_data)
 
 def update_flight(cursor, aircraft_data):
     insert_row_sql = """
