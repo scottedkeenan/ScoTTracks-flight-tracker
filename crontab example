@@ -1,0 +1,4 @@
+
+*/10 * * * * cd /path/to/flight/tracker/dir && path/to/python ./beacon_saver.py
+
+*/10 * * * * cd /home/scott/PycharmProjects/flight_tracker && ./venv/bin/python3 ./beacon_saver.py
