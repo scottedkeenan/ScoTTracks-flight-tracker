@@ -255,8 +255,6 @@ def save_beacon(body, flight):
                                      body=body)
 
 def track_aircraft(beacon, body, check_date=True):
-
-def track_aircraft(beacon, check_date=True):
     try:
         reference_timestamp = datetime(*time.strptime(beacon['reference_timestamp'], '%Y-%m-%dT%H:%M:%S.%f')[:6])
     except ValueError:
