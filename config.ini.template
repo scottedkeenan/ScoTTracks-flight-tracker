@@ -15,13 +15,18 @@ database =
 device_data_url = http://ddb.glidernet.org/download/
 
 tracking_radius = 550
-airfield_detection_radius = 5
+airfield_detection_radius = 4
 
 ; 15kt
 airborne_detection_speed = 27.78
 
 ;196.85 ft
 airborne_detection_agl = 30
+
+;500 ft
+first_in_air_detection_agl = 153
+first_in_air_detection_radius = 1
+first_in_air_detection_time_delta = 2
 
 landing_detection_speed = 27.78
 landing_detection_agl = 30
