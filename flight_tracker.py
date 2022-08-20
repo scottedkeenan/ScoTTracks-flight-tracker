@@ -254,6 +254,7 @@ def save_beacon(body, flight):
                                      routing_key='beacons_to_save',
                                      body=body)
 
+
 def track_aircraft(beacon, body, check_date=True):
     try:
         reference_timestamp = datetime(*time.strptime(beacon['reference_timestamp'], '%Y-%m-%dT%H:%M:%S.%f')[:6])
@@ -342,8 +343,31 @@ def track_aircraft(beacon, body, check_date=True):
 
         detect_airfield(beacon, new_flight)
 
-        if beacon['ground_speed'] > float(config['TRACKER']['airborne_detection_speed']) and new_flight.agl() > float(config['TRACKER']['airborne_detection_agl']):
+        if beacon['ground_speed'] > config.getfloat('TRACKER', 'airborne_detection_speed') and new_flight.agl() > config.getfloat('TRACKER', 'airborne_detection_agl'):
             new_flight.status = 'air'
+            log.info('Checking if this detection can be treated as a launch')
+
+            # if low enough and near enough, treat as a launch
+            # Todo: set landing esimate too - when an aircraft is detected for the first time in a while, check if its last beacon looked like a landing
+
+            # Strictly reject if timedelta is too large
+            beacon_delta = (beacon['reference_timestamp'] - beacon['timestamp']).total_seconds()
+            log.info("beacon delta: {} seconds. Timestamps: ts: {} rts: {}".format(beacon_delta, beacon['timestamp'], beacon['reference_timestamp']))
+            if beacon_delta > config.getfloat('TRACKER', 'first_in_air_detection_time_delta') or beacon_delta < 0:
+                log.info('Bad beacon delta {}, not treating as a launch'.format(beacon_delta))
+            else:
+                if new_flight.distance_to_nearest_airfield < config.getfloat('TRACKER', 'first_in_air_detection_radius')\
+                        and new_flight.agl() < config.getfloat('TRACKER', 'first_in_air_detection_agl'):
+                    log.info("Adding aircraft {} as launched at {} @ {} [First detection in air]".format(
+                        new_flight.address if new_flight.registration == 'UNKNOWN' else new_flight.registration,
+                        new_flight.nearest_airfield['name'],
+                        new_flight.timestamp
+                    ))
+                    new_flight.launch()
+                    db_conn = make_database_connection()
+                    add_flight(db_conn.cursor(), new_flight.to_dict())
+                    db_conn.commit()
+                    db_conn.close()
         else:
             new_flight.status = 'ground'
         log.info("Starting to track aircraft {}/{} {}km from {} with status {}".format(registration,
@@ -633,8 +657,12 @@ def process_beacon(ch, method, properties, body):
                     try:
                         track_aircraft(beacon, body, check_date)
                     except TypeError as e:
-                        log.info('Type error while tracking: {}'.format(e))
+                        log.error('Type error while tracking: {}'.format(e))
                         raise
+                    except configparser.NoOptionError as e:
+                        log.error('Config error while tracking: {}'.format(e))
+                    except KeyError as e:
+                        log.error('Key error while tracking {}'.format(e))
                 else:
                     log.debug("Not a glider or tug")
         except KeyError as e:
