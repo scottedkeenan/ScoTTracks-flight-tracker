@@ -225,6 +225,99 @@ def add_beacon(cursor, beacon):
     cursor.execute(insert_row_sql, insert_row_data)
 
 
+def add_many_beacon(cursor, data):
+    insert_row_sql = """
+    INSERT INTO `received_beacons` (
+        address,
+        address_type,
+        aircraft_type,
+        altitude,
+        aprs_type,
+        beacon_type,
+        climb_rate,
+        comment,
+        dstcall,
+        error_count,
+        flightlevel,
+        frequency_offset,
+        gps_quality,
+        ground_speed,
+        hardware_version,
+        latitude,
+        longitude,
+        name,
+        proximity,
+        raw_message,
+        real_address,
+        receiver_name,
+        reference_timestamp,
+        relay,
+        signal_power,
+        signal_quality,
+        software_version,
+        stealth,
+        symbolcode,
+        symboltable,
+        timestamp,
+        track,
+        turn_rate
+    )
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);"""
+
+    insert_row_template = {
+        'address': None,
+        'address_type': None,
+        'aircraft_type': None,
+        'altitude': None,
+        'aprs_type': None,
+        'beacon_type': None,
+        'climb_rate': None,
+        'comment': None,
+        'dstcall': None,
+        'error_count': None,
+        'flightlevel': None,
+        'frequency_offset': None,
+        'gps_quality': json.dumps,
+        'ground_speed': None,
+        'hardware_version': None,
+        'latitude': None,
+        'longitude': None,
+        'name': None,
+        'proximity': None,
+        'raw_message': None,
+        'real_address': None,
+        'receiver_name': None,
+        'reference_timestamp': None,
+        'relay': None,
+        'signal_power': None,
+        'signal_quality': None,
+        'software_version': None,
+        'stealth': None,
+        'symbolcode': None,
+        'symboltable': None,
+        'timestamp': None,
+        'track': None,
+        'turn_rate': None
+    }
+
+    insert_row_data = []
+    for beacon in data:
+        # print(beacon)
+        # print(type(beacon))
+        row = []
+        for k, v in insert_row_template.items():
+            try:
+                if v:
+                    row.append(v(beacon[k]))
+                else:
+                    row.append(beacon[k])
+            except KeyError:
+                # print("Key {} not found in beacon".format(k))
+                row.append(None)
+        insert_row_data.append(tuple(row))
+    cursor.executemany(insert_row_sql, insert_row_data)
+
+
 def update_flight(cursor, aircraft_data):
     insert_row_sql = """
     UPDATE daily_flights SET
