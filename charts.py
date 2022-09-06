@@ -39,6 +39,8 @@ def upload_chart_data_to_s3(cursor, flight_data):
                                            flight_data['address'],
                                            graph_start_time,
                                            graph_end_time)
+    # Todo: Change key into directory-like format
+    # Todo: Front end wall also need this update
     s3_key = '{}-{}.json'.format(flight_data['address'], graph_start_time).replace(':', '-').replace(' ', '-')
     log.info(s3_key)
     tempdir = tempfile.gettempdir()
