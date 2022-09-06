@@ -411,7 +411,8 @@ def get_beacons_for_address_between(cursor, address, start_datetime, end_datetim
     FROM `received_beacons`
     WHERE address = %s
     AND timestamp BETWEEN %s AND %s
-    ORDER BY timestamp
+    GROUP BY (timestamp)
+    ORDER BY timestamp;
     """
     get_beacons_data = (address, start_datetime, end_datetime)
 

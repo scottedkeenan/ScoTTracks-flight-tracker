@@ -626,10 +626,9 @@ def track_aircraft(beacon, body, check_date=True):
                         flight.takeoff_timestamp,
                         flight.landing_timestamp))
                     if config['TRACKER']['draw_alt_graph'] == 'true' and flight.takeoff_timestamp and flight.landing_timestamp:
-                        draw_alt_graph(
-                            db_conn.cursor(),
-                            flight
-                        )
+                        mq_channel.basic_publish(exchange='flight_tracker',
+                                                 routing_key='charts_to_draw',
+                                                 body=flight.to_dict())
                     tracked_aircraft[flight.address].reset()
                     db_conn.close()
 

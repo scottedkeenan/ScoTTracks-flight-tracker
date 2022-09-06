@@ -30,25 +30,25 @@ def json_datetime_converter(o):
         return o.__str__()
 
 
-def draw_alt_graph(cursor, flight):
+def upload_chart_data_to_s3(cursor, flight_data):
     log.info('Generating graph data')
     # Generate graph of flight
-    graph_start_time = (flight.takeoff_timestamp - datetime.timedelta(seconds=30)).strftime("%Y-%m-%d %H:%M:%S")
-    graph_end_time = (flight.landing_timestamp + datetime.timedelta(seconds=30)).strftime("%Y-%m-%d %H:%M:%S")
+    graph_start_time = (flight_data['takeoff_timestamp'] - datetime.timedelta(seconds=30)).strftime("%Y-%m-%d %H:%M:%S")
+    graph_end_time = (flight_data['landing_timestamp'] + datetime.timedelta(seconds=30)).strftime("%Y-%m-%d %H:%M:%S")
     data = get_beacons_for_address_between(cursor,
-                                           flight.address,
+                                           flight_data['address'],
                                            graph_start_time,
                                            graph_end_time)
-    s3_key = '{}-{}.json'.format(flight.address, graph_start_time).replace(':', '-').replace(' ', '-')
+    s3_key = '{}-{}.json'.format(flight_data['address'], graph_start_time).replace(':', '-').replace(' ', '-')
     log.info(s3_key)
     tempdir = tempfile.gettempdir()
     filename = '{}/{}'.format(tempdir, s3_key)
     if data:
         with open(filename, 'w') as f:
             data_dict = {
-                'start_time': flight.takeoff_timestamp.strftime("%Y-%m-%d-%H-%M-%S"),
-                'address': flight.address,
-                'data':data
+                'start_time': flight_data['takeoff_timestamp'].strftime("%Y-%m-%d-%H-%M-%S"),
+                'address': flight_data['address'],
+                'data': data
             }
             f.write(json.dumps(data_dict, default=json_datetime_converter))
         s3_client = boto3.client(
