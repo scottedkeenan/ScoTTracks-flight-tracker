@@ -17,8 +17,6 @@ from ogn.parser import parse, ParseError
 
 from flight_tracker_squirreler import add_flight, update_flight, get_currently_airborne_flights, add_beacon, get_beacons_for_address_between, get_raw_beacons_between, get_airfields, get_filters_by_country_codes, get_airfields_for_countries, get_raw_beacons_for_address_between
 
-from charts import draw_alt_graph
-
 from datetime import datetime
 
 from geopy import distance as measure_distance
@@ -28,6 +26,8 @@ from scipy.spatial import kdtree
 from flight import Flight
 
 from aerotow import Aerotow
+
+from charts import json_datetime_converter
 
 from statistics import mean, StatisticsError
 
@@ -626,9 +626,22 @@ def track_aircraft(beacon, body, check_date=True):
                         flight.takeoff_timestamp,
                         flight.landing_timestamp))
                     if config['TRACKER']['draw_alt_graph'] == 'true' and flight.takeoff_timestamp and flight.landing_timestamp:
-                        mq_channel.basic_publish(exchange='flight_tracker',
-                                                 routing_key='charts_to_draw',
-                                                 body=flight.to_dict())
+                        chart_payload = {
+                            'takeoff_timestamp': flight.takeoff_timestamp,
+                            'landing_timestamp':  flight.landing_timestamp,
+                            'address': flight.address
+                        }
+                        try:
+                            mq_channel.basic_publish(exchange='flight_tracker',
+                                                     routing_key='charts_to_draw',
+                                                     body=json.dumps(
+                                                         chart_payload,
+                                                         default=json_datetime_converter
+                                                     ).encode())
+                        except TypeError as e:
+                            print(e)
+                            raise e
+
                     tracked_aircraft[flight.address].reset()
                     db_conn.close()
 

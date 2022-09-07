@@ -1,7 +1,10 @@
+import time
+
 import matplotlib.pyplot as plt
 import matplotlib.dates
 import matplotlib.dates as mdates
-import datetime
+
+from datetime import datetime, timedelta
 import json
 import tempfile
 
@@ -26,21 +29,24 @@ config.read('config.ini')
 
 
 def json_datetime_converter(o):
-    if isinstance(o, datetime.datetime):
+    if isinstance(o, datetime):
         return o.__str__()
 
 
 def upload_chart_data_to_s3(cursor, flight_data):
     log.info('Generating graph data')
     # Generate graph of flight
-    graph_start_time = (flight_data['takeoff_timestamp'] - datetime.timedelta(seconds=30)).strftime("%Y-%m-%d %H:%M:%S")
-    graph_end_time = (flight_data['landing_timestamp'] + datetime.timedelta(seconds=30)).strftime("%Y-%m-%d %H:%M:%S")
+
+    flight_start_time = datetime.strptime(flight_data['takeoff_timestamp'], '%Y-%m-%d %H:%M:%S')
+    flight_end_time = datetime.strptime(flight_data['landing_timestamp'], '%Y-%m-%d %H:%M:%S')
+    graph_start_time = (flight_start_time - timedelta(seconds=30)).strftime("%Y-%m-%d %H:%M:%S")
+    graph_end_time = (flight_end_time + timedelta(seconds=30)).strftime("%Y-%m-%d %H:%M:%S")
     data = get_beacons_for_address_between(cursor,
                                            flight_data['address'],
                                            graph_start_time,
                                            graph_end_time)
     # Todo: Change key into directory-like format
-    # Todo: Front end wall also need this update
+    # Todo: Front end will also need this update
     s3_key = '{}-{}.json'.format(flight_data['address'], graph_start_time).replace(':', '-').replace(' ', '-')
     log.info(s3_key)
     tempdir = tempfile.gettempdir()
@@ -48,7 +54,7 @@ def upload_chart_data_to_s3(cursor, flight_data):
     if data:
         with open(filename, 'w') as f:
             data_dict = {
-                'start_time': flight_data['takeoff_timestamp'].strftime("%Y-%m-%d-%H-%M-%S"),
+                'start_time': flight_start_time,
                 'address': flight_data['address'],
                 'data': data
             }
