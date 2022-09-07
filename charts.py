@@ -54,7 +54,7 @@ def upload_chart_data_to_s3(cursor, flight_data):
     if data:
         with open(filename, 'w') as f:
             data_dict = {
-                'start_time': flight_start_time,
+                'start_time': flight_start_time.strftime("%Y-%m-%d-%H-%M-%S"),
                 'address': flight_data['address'],
                 'data': data
             }
