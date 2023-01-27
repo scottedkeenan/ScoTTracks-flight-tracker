@@ -625,6 +625,7 @@ def track_aircraft(beacon, body, check_date=True):
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
                         flight.takeoff_timestamp,
                         flight.landing_timestamp))
+                    log.debug('ALT GRAPH? ' + config['TRACKER']['draw_alt_graph'])
                     if config['TRACKER']['draw_alt_graph'] == 'true' and flight.takeoff_timestamp and flight.landing_timestamp:
                         chart_payload = {
                             'takeoff_timestamp': flight.takeoff_timestamp,

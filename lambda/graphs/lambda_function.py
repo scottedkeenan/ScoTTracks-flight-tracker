@@ -76,7 +76,7 @@ def generate_map_with_route(location_list, color='red'):
 
     folium.TileLayer(
         tiles='https://api.tiles.openaip.net/api/data/openaip/{z}/{x}/{y}.png' + '?apiKey={}'.format(AIP_API_KEY),
-        attr='Airspace: <a href="https://www.openaip.net">Open AIP<a>'
+        attr='Airspace: <a href="https://www.openaip.net" target="_blank">Open AIP <a>'
     ).add_to(map)
 
     return map
