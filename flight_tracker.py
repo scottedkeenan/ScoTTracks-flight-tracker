@@ -720,10 +720,18 @@ for db_flight in database_flights:
     try:
         db_tracked_flight.takeoff_airfield = int(db_flight['takeoff_airfield'])
     except TypeError:
+        # null
+        db_tracked_flight.takeoff_airfield = None
+    except ValueError:
+        # 'unknown'
         db_tracked_flight.takeoff_airfield = None
     try:
         db_tracked_flight.landing_airfield = int(db_flight['landing_airfield'])
     except TypeError:
+        # null
+        db_tracked_flight.landing_airfield = None
+    except ValueError:
+        # 'unknown'
         db_tracked_flight.landing_airfield = None
     db_tracked_flight.launch_type = db_flight['launch_type']
     db_tracked_flight.average_launch_climb_rate = db_flight['average_launch_climb_rate']
