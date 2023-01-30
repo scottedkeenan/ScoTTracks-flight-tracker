@@ -113,7 +113,6 @@ connection_pool = pooling.MySQLConnectionPool(pool_name="pynative_pool",
                                               user=config['TRACKER']['database_user'],
                                               password=config['TRACKER']['database_password'])
 
-
 def make_database_connection():
     connection_object = connection_pool.get_connection()
     if connection_object.is_connected():
@@ -257,6 +256,7 @@ def save_beacon(body, flight):
             mq_channel.basic_publish(exchange='flight_tracker',
                                      routing_key='beacons_to_save',
                                      body=body)
+
 
 
 def track_aircraft(beacon, body, check_date=True):
@@ -717,8 +717,14 @@ for db_flight in database_flights:
     db_tracked_flight.tracking_launch_height = db_flight['tracking_launch_height']
     db_tracked_flight.tracking_launch_start_time = db_flight['tracking_launch_start_time']
     db_tracked_flight.launch_height = db_flight['launch_height']
-    db_tracked_flight.takeoff_airfield = db_flight['takeoff_airfield']
-    db_tracked_flight.landing_airfield = db_flight['landing_airfield']
+    try:
+        db_tracked_flight.takeoff_airfield = int(db_flight['takeoff_airfield'])
+    except TypeError:
+        db_tracked_flight.takeoff_airfield = None
+    try:
+        db_tracked_flight.landing_airfield = int(db_flight['landing_airfield'])
+    except TypeError:
+        db_tracked_flight.landing_airfield = None
     db_tracked_flight.launch_type = db_flight['launch_type']
     db_tracked_flight.average_launch_climb_rate = db_flight['average_launch_climb_rate']
     db_tracked_flight.max_launch_climb_rate = db_flight['max_launch_climb_rate']
