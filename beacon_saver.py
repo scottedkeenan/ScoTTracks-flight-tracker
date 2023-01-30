@@ -95,7 +95,7 @@ def draw_alt_graph():
         flights = []
         method_frames = []
 
-        for i in range(25):
+        for i in range(10):
             method_frame, header_frame, message = channel.basic_get(queue='charts_to_draw',
                                                                     auto_ack=False)
             if message and method_frame:

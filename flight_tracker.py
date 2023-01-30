@@ -121,7 +121,9 @@ def make_database_connection():
 
 db_conn = make_database_connection()
 
-AIRFIELD_DATA = {}
+AIRFIELD_DATA_BY_LAT_LON = {}
+# TODO Redis the id table
+AIRFIELD_DATA_BY_ID = {}
 for airfield in get_airfields_for_countries(db_conn.cursor(dictionary=True), config['TRACKER']['track_countries'].split(',')):
     airfield_json = {
         'id': airfield['id'],
@@ -133,9 +135,10 @@ for airfield in get_airfields_for_countries(db_conn.cursor(dictionary=True), con
         'launch_type_detection': True if airfield['launch_type_detection'] == 1 else False,
         'follow_aircraft': True if airfield['follow_aircraft'] == 1 else False
     }
-    AIRFIELD_DATA[(airfield_json['latitude'], airfield_json['longitude'])] = airfield_json
+    AIRFIELD_DATA_BY_LAT_LON[(airfield_json['latitude'], airfield_json['longitude'])] = airfield_json
+    AIRFIELD_DATA_BY_ID[airfield_json['id']] = airfield_json
 
-AIRFIELD_LOCATIONS = [x for x in AIRFIELD_DATA.keys()]
+AIRFIELD_LOCATIONS = [x for x in AIRFIELD_DATA_BY_LAT_LON.keys()]
 log.debug('Airfields loaded: {}'.format(pprint.pformat(AIRFIELD_LOCATIONS)))
 AIRFIELD_TREE = kdtree.KDTree(AIRFIELD_LOCATIONS)
 
@@ -150,6 +153,7 @@ def detect_airfield(beacon, flight):
     """
     detection_radius = float(config['TRACKER']['airfield_detection_radius'])
 
+    # TODO we should do something if another airfield is nearer, this is causing bugs with closely located sites (DRL, HEAD) (SEIGHFORD)
     # If flight is still near the same airfield, do nothing
     if flight.nearest_airfield and flight.distance_to_nearest_airfield:
         current_distance_to_airfield = measure_distance.distance(
@@ -161,7 +165,7 @@ def detect_airfield(beacon, flight):
 
     # If not, detect the nearest airfield and update the flight
     _, closest_airfield_index = AIRFIELD_TREE.query((float(beacon['latitude']), float(beacon['longitude'])), 1)
-    closest_airfield = AIRFIELD_DATA[AIRFIELD_LOCATIONS[closest_airfield_index]]
+    closest_airfield = AIRFIELD_DATA_BY_LAT_LON[AIRFIELD_LOCATIONS[closest_airfield_index]]
     distance_to_nearest = measure_distance.distance(
         [float(closest_airfield['latitude']), float(closest_airfield['longitude'])],
         (beacon['latitude'], beacon['longitude'])).km
@@ -234,9 +238,9 @@ def save_beacon(body, flight):
 
     # We want to save all beacons from this airfield
     if config_save_beacon == 'airfield':
-        try:
-            takeoff_airfield_follows = flight.takeoff_airfield['follow_aircraft']
-        except TypeError:
+        if flight.takeoff_airfield:
+            takeoff_airfield_follows = AIRFIELD_DATA_BY_ID[flight.takeoff_airfield]['follow_aircraft']
+        else:
             takeoff_airfield_follows = False
         try:
             nearest_airfield_follows = flight.nearest_airfield['follow_aircraft']
@@ -675,7 +679,7 @@ def process_beacon(ch, method, properties, body):
                     except configparser.NoOptionError as e:
                         log.error('Config error while tracking: {}'.format(e))
                     except KeyError as e:
-                        log.error('Key error while tracking {}'.format(e))
+                        log.error('Key error while tracking {} {}'.format(e, beacon))
                 else:
                     log.debug("Not a glider or tug")
         except KeyError as e:
