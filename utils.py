@@ -20,7 +20,10 @@ def make_database_connection(config, retry_counter=0):
             user=config['TRACKER']['database_user'],
             password=config['TRACKER']['database_password'],
             host=config['TRACKER']['database_host'],
-            database=config['TRACKER']['database'])
+            database=config['TRACKER']['database'],
+            # port=3307,
+            # ssl_disabled=True
+        )
         return conn
     except mysql.connector.Error as err:
         log.error(err)

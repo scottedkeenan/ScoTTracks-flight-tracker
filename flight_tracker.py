@@ -1,5 +1,4 @@
 import configparser
-import requests
 import json
 import logging
 import os
@@ -12,10 +11,10 @@ import sys
 
 from mysql.connector import pooling
 
-from ogn.client import AprsClient
-from ogn.parser import parse, ParseError
+from ogn.parser import ParseError
 
-from flight_tracker_squirreler import add_flight, update_flight, get_currently_airborne_flights, add_beacon, get_beacons_for_address_between, get_raw_beacons_between, get_airfields, get_filters_by_country_codes, get_airfields_for_countries, get_raw_beacons_for_address_between
+from flight_tracker_squirreler import add_flight, update_flight, get_currently_airborne_flights, add_beacon, \
+    get_airfields_for_countries, get_device_data_by_address
 
 from charts import draw_alt_graph
 
@@ -31,54 +30,14 @@ from aerotow import Aerotow
 
 from statistics import mean, StatisticsError
 
+from ogn_ddb import import_device_data
+
 
 config = configparser.ConfigParser()
 config.read('config.ini')
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 log = logging.getLogger(__name__)
-
-
-def import_device_data():
-
-    # "4054A1": {
-    #     "DEVICE_TYPE": "I",
-    #     "DEVICE_ID": "4054A1",
-    #     "AIRCRAFT_MODEL": "ASK-21",
-    #     "REGISTRATION": "G-CHPW",
-    #     "CN": "HPW",
-    #     "TRACKED": "Y",
-    #     "IDENTIFIED": "Y"
-    # }
-
-    r = requests.get(config['TRACKER']['device_data_url'])
-
-    if r.status_code != 200:
-        log.error('Unable to update device dict: code {}'.format(r.status_code))
-        try:
-            with open('ogn-ddb.json', 'r') as ddb_data:
-                return json.loads(ddb_data.read())
-        except FileNotFoundError:
-            log.error('No ogn ddb file found')
-            return {}
-
-    device_data = r.text
-
-    keys = []
-    device_dict = {}
-
-    for line in device_data.splitlines():
-        if line[0] == '#':
-            keys = line[1:].split(',')
-        else:
-            values = line.split(',')
-            device = {keys[i].strip("'"): values[i].strip("'") for i,key in enumerate(keys)}
-            device_dict[device['DEVICE_ID']] = device
-
-    with open('ogn-ddb.json', 'w') as ddb_data:
-        ddb_data.write(json.dumps(device_dict))
-
-    return device_dict
 
 
 def import_beacon_correction_data():
@@ -89,9 +48,6 @@ def import_beacon_correction_data():
         log.error('No ogn beacon correction file found')
         return {}
 
-
-log.info('Importing device data')
-DEVICE_DICT = import_device_data()
 
 log.info('Importing beacon corrections')
 BEACON_CORRECTIONS = import_beacon_correction_data()
@@ -106,7 +62,10 @@ connection_pool = pooling.MySQLConnectionPool(pool_name="pynative_pool",
                                               host=config['TRACKER']['database_host'],
                                               database=config['TRACKER']['database'],
                                               user=config['TRACKER']['database_user'],
-                                              password=config['TRACKER']['database_password'])
+                                              password=config['TRACKER']['database_password'],
+                                              # port = 3307,
+                                              # ssl_disabled = True
+                                              )
 
 
 def make_database_connection():
@@ -115,6 +74,9 @@ def make_database_connection():
         return connection_object
 
 db_conn = make_database_connection()
+
+log.info('Importing device data')
+import_device_data(db_conn, config['TRACKER']['device_data_url'])
 
 AIRFIELD_DATA = {}
 for airfield in get_airfields_for_countries(db_conn.cursor(dictionary=True), config['TRACKER']['track_countries'].split(',')):
@@ -291,25 +253,28 @@ def track_aircraft(beacon, check_date=True):
 
     if beacon['address'] not in tracked_aircraft.keys():
         try:
-            device = DEVICE_DICT[beacon['address']]
+            db_conn = make_database_connection()
+            device = get_device_data_by_address(db_conn.cursor(dictionary=True), beacon['address'])
+            db_conn.close()
         except KeyError:
             log.error('Device dict not found for {}'.format(beacon['address']))
             device = None
 
         if device:
-            log.info('Using data in device dict')
+            log.info('Using data in device database')
+            log.info(device)
 
-            if DEVICE_DICT[beacon['address']]['IDENTIFIED'] == 'Y':
-                registration = DEVICE_DICT[beacon['address']]['REGISTRATION'].upper() if DEVICE_DICT[beacon['address']]['REGISTRATION'] else 'UNKNOWN'
+            if device['identified'] == 1:
+                registration = device['registration'].upper() if device['registration'] else 'UNKNOWN'
             else:
-                log.warning('Aircraft {} requests no identify'.format(beacon['address']))
-                if DEVICE_DICT[beacon['address']]['REGISTRATION'] != '':
-                    log.warning("Don't identify but reg included: {}!".format(DEVICE_DICT[beacon['address']]['REGISTRATION']))
+                log.info('Aircraft {} requests no identify'.format(beacon['address']))
+                if device['registration'] != '':
+                    log.info("Don't identify but reg included: {}!".format(device['registration']))
                 registration = 'UNKNOWN'
-            aircraft_model = DEVICE_DICT[beacon['address']]['AIRCRAFT_MODEL'] if DEVICE_DICT[beacon['address']]['AIRCRAFT_MODEL'] else None
-            competition_number = DEVICE_DICT[beacon['address']]['CN'] if DEVICE_DICT[beacon['address']]['CN'] else None
+            aircraft_model = device['aircraft_model'] if device['aircraft_model'] else None
+            competition_number = device['cn'] if device['cn'] else None
 
-            if DEVICE_DICT[beacon['address']]['TRACKED'] != 'Y':
+            if device['tracked'] != 1:
                 log.warning('Aircraft {}/{} requests no track'.format(registration, beacon['address']))
                 no_track_flight = Flight(
                     None,

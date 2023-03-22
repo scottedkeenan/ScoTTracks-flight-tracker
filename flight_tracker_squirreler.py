@@ -442,3 +442,39 @@ def get_filters_by_country_codes(cursor, country_codes):
 
     cursor.execute(get_filters_sql, country_codes)
     return [i[0] for i in cursor.fetchall()]
+
+
+def get_device_data_by_address(cursor, address):
+
+    get_device_data_sql = """
+    SELECT *
+    FROM `device_data`
+    WHERE `device_id` = %s
+    LIMIT 1;
+    """
+    cursor.execute(get_device_data_sql, [address])
+    return cursor.fetchone()
+
+
+def save_device_data_to_database(db_conn, data):
+
+    cursor = db_conn.cursor()
+
+    # Create a temporary table to store the new data
+    cursor.execute("CREATE TEMPORARY TABLE tmp_device_data LIKE device_data")
+
+    # Insert the new data into the temporary table
+    for item in data['devices']:
+        tracked = True if item['tracked'] == 'Y' else False
+        identified = True if item['identified'] == 'Y' else False
+        query = "INSERT INTO tmp_device_data (device_type, device_id, aircraft_model, registration, cn, tracked, identified) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+        values = (item['device_type'], item['device_id'], item['aircraft_model'], item['registration'], item['cn'], tracked, identified)
+        cursor.execute(query, values)
+
+    # Delete any rows in the main table that are not included in the new data
+    cursor.execute("DELETE FROM device_data WHERE DEVICE_ID NOT IN (SELECT DEVICE_ID FROM tmp_device_data)")
+
+    # Copy the new data from the temporary table to the main table
+    cursor.execute("REPLACE INTO device_data SELECT * FROM tmp_device_data")
+
+    db_conn.commit()
