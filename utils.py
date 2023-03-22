@@ -1,5 +1,3 @@
-import configparser
-import requests
 import json
 import logging
 import os
@@ -28,7 +26,8 @@ def make_database_connection(config, retry_counter=0):
     except mysql.connector.Error as err:
         log.error(err)
         retry_counter += 1
-        return make_database_connection(retry_counter)
+        return make_database_connection(config, retry_counter)
+
 
 def import_beacon_correction_data():
     try:
