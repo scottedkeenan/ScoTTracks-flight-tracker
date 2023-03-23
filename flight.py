@@ -215,3 +215,29 @@ class Flight:
     def update_aerotow(self, beacon):
         if self.aerotow:
             self.aerotow.insert_data(self, beacon)
+
+    def reset(self):
+        self.takeoff_timestamp = None
+        self.takeoff_airfield = None
+        self.landing_timestamp = None
+        self.landing_airfield = None
+        self.launch_height = None
+        self.launch_type = None
+        self.average_launch_climb_rate = 0
+        self.max_launch_climb_rate = 0
+        self.launch_climb_rates = {}
+        self.launch_beacon_heights = []
+        self.takeoff_detection_height = None
+        self.launch_gradients = []
+        self.launch_complete = False
+        self.tug = None
+
+        self.last_latitude = None
+        self.last_longitude = None
+        self.last_altitude = None
+
+        self.last_pings = deque([], maxlen=10)
+        self.launch_rec_name = None
+
+        self.aerotow = None
+
