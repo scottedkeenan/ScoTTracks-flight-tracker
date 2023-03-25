@@ -1,3 +1,4 @@
+import configparser
 import json
 import logging
 import os
@@ -9,24 +10,26 @@ logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 log = logging.getLogger(__name__)
 
 
-def make_database_connection(config, retry_counter=0):
+def make_database_connection(retry_counter=0):
     if retry_counter > 5:
         log.error("Failed to connect to database after 5 retries")
         return
+    config = configparser.ConfigParser()
+    config.read('./config.ini')
     try:
         conn = mysql.connector.connect(
             user=config['TRACKER']['database_user'],
             password=config['TRACKER']['database_password'],
             host=config['TRACKER']['database_host'],
             database=config['TRACKER']['database'],
-            # port=3307,
-            # ssl_disabled=True
+            port=config['TRACKER']['database_port'],
+            ssl_disabled=True if config['TRACKER']['database_ssl'] == 'True' else False
         )
         return conn
     except mysql.connector.Error as err:
         log.error(err)
         retry_counter += 1
-        return make_database_connection(config, retry_counter)
+        return make_database_connection(retry_counter)
 
 
 def import_beacon_correction_data():

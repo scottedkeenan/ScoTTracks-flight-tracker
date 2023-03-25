@@ -68,8 +68,8 @@ connection_pool = pooling.MySQLConnectionPool(pool_name="pynative_pool",
                                               database=config['TRACKER']['database'],
                                               user=config['TRACKER']['database_user'],
                                               password=config['TRACKER']['database_password'],
-                                              # port = 3307,
-                                              # ssl_disabled = True
+                                              port=config['TRACKER']['database_port'],
+                                              ssl_disabled=True if config['TRACKER']['database_ssl'] == 'True' else False
                                               )
 
 

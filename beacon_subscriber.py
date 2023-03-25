@@ -67,10 +67,10 @@ def filter_queue_beacon(raw_message):
     except NotImplementedError as e:
         log.error('Not implemented error: {}'.format(e))
 
-# LIVE get beacons
 
+# LIVE get beacons
 track_countries = config['TRACKER']['track_countries'].split(',')
-db_conn = make_database_connection(config)
+db_conn = make_database_connection()
 if not db_conn:
     exit(1)
 filters = get_filters_by_country_codes(db_conn.cursor(), track_countries)

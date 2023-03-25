@@ -5,9 +5,9 @@ from datetime import datetime, timedelta
 
 import pika
 import configparser
-import mysql.connector
 
 import flight_tracker_squirreler
+import utils
 
 from charts import upload_chart_data_to_s3
 
@@ -21,12 +21,7 @@ channel = connection.channel()
 
 # create a database connection
 
-mydb = mysql.connector.connect(
-    host=config['TRACKER']['database_host'],
-    user=config['TRACKER']['database_user'],
-    password=config['TRACKER']['database_password'],
-    database=config['TRACKER']['database']
-)
+db = utils.make_database_connection()
 
 
 def save_beacons_from_queue():
@@ -57,7 +52,7 @@ def save_beacons_from_queue():
                 messages_found_last_time = False
                 break
 
-        cursor = mydb.cursor()
+        cursor = db.cursor()
 
         # Bulk upload the messages
 
@@ -109,7 +104,7 @@ def draw_alt_graph():
         # Get the chart data and upload to S3
 
         for flight in flights:
-            upload_chart_data_to_s3(mydb.cursor(), flight)
+            upload_chart_data_to_s3(db.cursor(), flight)
 
         # Ack the queue
 
@@ -124,3 +119,4 @@ def draw_alt_graph():
 if __name__ == "__main__":
     save_beacons_from_queue()
     draw_alt_graph()
+    db.close()

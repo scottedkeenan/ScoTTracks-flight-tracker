@@ -45,6 +45,7 @@ def upload_chart_data_to_s3(cursor, flight_data):
                                            flight_data['address'],
                                            graph_start_time,
                                            graph_end_time)
+    cursor.close()
     # Todo: Change key into directory-like format
     # Todo: Front end will also need this update
     s3_key = '{}-{}.json'.format(flight_data['address'], graph_start_time).replace(':', '-').replace(' ', '-')
