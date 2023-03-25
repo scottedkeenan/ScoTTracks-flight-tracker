@@ -566,9 +566,13 @@ def save_device_data_to_database(db_conn, data):
         cursor.execute(query, values)
 
     # Delete any rows in the main table that are not included in the new data
-    cursor.execute("DELETE FROM device_data WHERE DEVICE_ID NOT IN (SELECT DEVICE_ID FROM tmp_device_data)")
+    cursor.execute('DELETE FROM device_data WHERE DEVICE_ID NOT IN (SELECT DEVICE_ID FROM tmp_device_data)')
 
     # Copy the new data from the temporary table to the main table
-    cursor.execute("REPLACE INTO device_data SELECT * FROM tmp_device_data")
+    cursor.execute('REPLACE INTO device_data SELECT * FROM tmp_device_data')
 
     db_conn.commit()
+    cursor.execute('SELECT count(*) from device_data')
+    device_count = cursor.fetchone()[0]
+    cursor.close()
+    return device_count
