@@ -17,9 +17,16 @@ def import_device_data(db_conn, device_data_url):
 
     if r.status_code != 200:
         log.error('Unable to update devices: code {}'.format(r.status_code))
-        return
+        return False
 
-    device_count = len(r.json()['devices'])
+    try:
+        device_count = len(r.json()['devices'])
+    except KeyError:
+        log.error('No devices key in response')
+        return False
+    if device_count == 0:
+        log.error('No devices in data')
+        return False
 
     log.info('Got data from OGN, {} devices found'.format(device_count))
 
