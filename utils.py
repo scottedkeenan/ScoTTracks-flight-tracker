@@ -23,7 +23,7 @@ def make_database_connection(retry_counter=0):
             host=config['TRACKER']['database_host'],
             database=config['TRACKER']['database'],
             port=config['TRACKER']['database_port'],
-            ssl_disabled=True if config['TRACKER']['database_ssl'] == 'True' else False
+            ssl_disabled=True if config['TRACKER']['database_ssl_disabled'] == 'True' else False
         )
         return conn
     except mysql.connector.Error as err:
