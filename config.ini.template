@@ -11,6 +11,8 @@ database_user =
 database_password =
 database_host =
 database =
+database_port = 3306
+database_ssl_disabled = False
 
 device_data_url = http://ddb.glidernet.org/download/
 

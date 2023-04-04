@@ -86,7 +86,7 @@ for file_name in airfield_data_files:
 print(len(AIRFIELD_DATA))
 print('='*100)
 
-db_conn = utils.make_database_connection(config)
+db_conn = utils.make_database_connection()
 if not db_conn:
     exit(1)
 
