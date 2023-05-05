@@ -117,8 +117,8 @@ log.error('Exited with {} failures'.format(failures))
 
 # from flight_tracker_squirreler import get_filters_by_country_codes, get_raw_beacons_between
 #
-# db_conn = make_database_connection(config)
-# beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-03-11 10:00:00', '2022-12-22 18:00:00')
+# db_conn = make_database_connection()
+# beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True),'2020-03-11 10:00:00', '2025-12-22 18:00:00')
 # # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True), '2020-12-29 08:40:55', '2021-12-31 23:00:00')
 # # beacons = get_raw_beacons_between(db_conn.cursor(dictionary=True), '2021-02-21 00:00:00', '2022-02-18 23:15:00')
 #
