@@ -1,3 +1,4 @@
+import pprint
 from collections import deque
 from statistics import mean
 import os
@@ -112,15 +113,19 @@ class Flight:
 
         if self.takeoff_timestamp and self.launch_type not in ['aerotow_pair', 'aerotow_glider'] and not self.launch_complete:
             # todo: consider if last pings should be in aerotow object
-            self.last_pings.append(
-                {
-                    'timestamp': beacon['timestamp'],
-                    'altitude': beacon['altitude'],
-                    'latitude': beacon['latitude'],
-                    'longitude': beacon['longitude'],
-                    'receiver': beacon['receiver_name'],
-                    'signal': beacon['signal_quality']
-                })
+            try:
+                self.last_pings.append(
+                    {
+                        'timestamp': beacon['timestamp'],
+                        'altitude': beacon['altitude'],
+                        'latitude': beacon['latitude'],
+                        'longitude': beacon['longitude'],
+                        'receiver': beacon['receiver_name'],
+                        'signal': beacon['signal_quality']
+                    })
+            except KeyError as e:
+                log.error(pprint.pformat(beacon))
+                raise e
             if len(self.last_pings) == 10:
                 # it's a deque ^
                 self.mean_recent_launch_altitude = mean([i['altitude'] for i in self.last_pings])
@@ -130,7 +135,7 @@ class Flight:
     def launch(self, time_known=True):
         # if self.status == 'ground':
         self.status = 'air'
-        self.takeoff_airfield = self.nearest_airfield['id']
+        self.takeoff_airfield = self.nearest_airfield
         self.takeoff_timestamp = self.timestamp
         self.takeoff_detection_height = self.agl()
         # if time_known:

@@ -97,7 +97,7 @@ class Aerotow:
             return
         if beacon['timestamp'] < list(self._beacons.keys())[0]:
             # exit early if this is from the past
-            log.info("Skipping aerotow tracking: this beacon is from before the launch was detected")
+            log.debug("Skipping aerotow tracking: this beacon is from before the launch was detected")
             return
 
         if beacon['timestamp'] not in self._beacons.keys():

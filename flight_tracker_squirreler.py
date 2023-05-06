@@ -72,12 +72,40 @@ def create_received_beacons_table(cursor):
 
 
 def get_currently_airborne_flights(cursor):
-    #todo: https://stackoverflow.com/questions/11565487/python-equivalent-of-php-mysql-fetch-array
     get_flights_sql = """
-    SELECT * FROM `daily_flights`
-    WHERE status = 'air'
-    AND date(reference_timestamp) = date(CURDATE())
-    AND landing_timestamp IS NULL   
+    SELECT 
+    daily_flights.*, 
+    tof.id AS takeoff_airfield_id, 
+    tof.name AS takeoff_airfield_name, 
+    tof.country_code AS takeoff_airfield_country_code, 
+    tof.icao AS takeoff_airfield_icao, 
+    tof.latitude AS takeoff_airfield_latitude, 
+    tof.longitude AS takeoff_airfield_longitude, 
+    tof.elevation AS takeoff_airfield_elevation, 
+    tof.type AS takeoff_airfield_type, 
+    tof.runways AS takeoff_airfield_runways, 
+    tof.follow_aircraft AS takeoff_airfield_follow_aircraft,
+    nf.id AS nearest_airfield_id, 
+    nf.name AS nearest_airfield_name, 
+    nf.country_code AS nearest_airfield_country_code, 
+    nf.icao AS nearest_airfield_icao, 
+    nf.latitude AS nearest_airfield_latitude, 
+    nf.longitude AS nearest_airfield_longitude, 
+    nf.elevation AS nearest_airfield_elevation, 
+    nf.type AS nearest_airfield_type, 
+    nf.runways AS nearest_airfield_runways, 
+    nf.follow_aircraft AS nearest_airfield_follow_aircraft,
+    sites.nice_name AS takeoff_airfield_nice_name,
+    sites.launch_type_detection as takeoff_airfield_launch_type_detection
+FROM 
+    daily_flights 
+    LEFT JOIN airfields AS tof ON daily_flights.takeoff_airfield = tof.id 
+    LEFT JOIN airfields AS nf ON daily_flights.airfield = nf.id 
+    LEFT JOIN sites ON sites.airfield_id = tof.id
+WHERE 
+    status = 'air' 
+    AND DATE(reference_timestamp) = DATE(CURDATE()) 
+    AND landing_timestamp IS NULL;
     """
     cursor.execute(get_flights_sql)
     return cursor.fetchall()
@@ -120,9 +148,9 @@ def add_flight(cursor, aircraft_data):
         aircraft_data['timestamp'],
         aircraft_data['registration'],
         aircraft_data['takeoff_timestamp'],
-        aircraft_data['takeoff_airfield'],
+        aircraft_data['takeoff_airfield']['id'] if aircraft_data['takeoff_airfield'] else None,
         aircraft_data['landing_timestamp'],
-        aircraft_data['landing_airfield'],
+        aircraft_data['landing_airfield']['id'] if aircraft_data['landing_airfield'] else None,
         aircraft_data['status'],
         aircraft_data['launch_height'],
         aircraft_data['launch_type'],
@@ -352,9 +380,9 @@ def update_flight(cursor, aircraft_data):
         aircraft_data['timestamp'],
         aircraft_data['registration'],
         aircraft_data['takeoff_timestamp'],
-        aircraft_data['takeoff_airfield'],
+        aircraft_data['takeoff_airfield']['id'] if aircraft_data['takeoff_airfield'] else None,
         aircraft_data['landing_timestamp'],
-        aircraft_data['landing_airfield'],
+        aircraft_data['landing_airfield']['id'] if aircraft_data['landing_airfield'] else None,
         aircraft_data['status'],
         aircraft_data['launch_height'],
         aircraft_data['launch_type'],

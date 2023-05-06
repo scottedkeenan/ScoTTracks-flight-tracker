@@ -19,10 +19,6 @@ config.read('./config.ini')
 connection = pika.BlockingConnection(pika.ConnectionParameters(config['TRACKER']['rabbit_mq_host'], heartbeat=0))
 channel = connection.channel()
 
-# create a database connection
-
-db = utils.make_database_connection()
-
 
 def save_beacons_from_queue():
 
@@ -117,6 +113,6 @@ def draw_alt_graph():
 
 
 if __name__ == "__main__":
-    save_beacons_from_queue()
-    draw_alt_graph()
-    db.close()
+    with utils.make_database_connection() as db:
+        save_beacons_from_queue()
+        draw_alt_graph()
