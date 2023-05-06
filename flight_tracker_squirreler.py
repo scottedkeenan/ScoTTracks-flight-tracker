@@ -85,22 +85,22 @@ def get_currently_airborne_flights(cursor):
     tof.type AS takeoff_airfield_type, 
     tof.runways AS takeoff_airfield_runways, 
     tof.follow_aircraft AS takeoff_airfield_follow_aircraft,
-    nf.id AS takeoff_airfield_id, 
-    nf.name AS takeoff_airfield_name, 
-    nf.country_code AS takeoff_airfield_country_code, 
-    nf.icao AS takeoff_airfield_icao, 
-    nf.latitude AS takeoff_airfield_latitude, 
-    nf.longitude AS takeoff_airfield_longitude, 
-    nf.elevation AS takeoff_airfield_elevation, 
-    nf.type AS takeoff_airfield_type, 
-    nf.runways AS takeoff_airfield_runways, 
-    nf.follow_aircraft AS takeoff_airfield_follow_aircraft,
+    nf.id AS nearest_airfield_id, 
+    nf.name AS nearest_airfield_name, 
+    nf.country_code AS nearest_airfield_country_code, 
+    nf.icao AS nearest_airfield_icao, 
+    nf.latitude AS nearest_airfield_latitude, 
+    nf.longitude AS nearest_airfield_longitude, 
+    nf.elevation AS nearest_airfield_elevation, 
+    nf.type AS nearest_airfield_type, 
+    nf.runways AS nearest_airfield_runways, 
+    nf.follow_aircraft AS nearest_airfield_follow_aircraft,
     sites.nice_name AS takeoff_airfield_nice_name,
     sites.launch_type_detection as takeoff_airfield_launch_type_detection
 FROM 
     daily_flights 
-    JOIN airfields AS tof ON daily_flights.takeoff_airfield = tof.id 
-    JOIN airfields AS nf ON daily_flights.airfield = nf.id 
+    LEFT JOIN airfields AS tof ON daily_flights.takeoff_airfield = tof.id 
+    LEFT JOIN airfields AS nf ON daily_flights.airfield = nf.id 
     LEFT JOIN sites ON sites.airfield_id = tof.id
 WHERE 
     status = 'air' 
