@@ -250,7 +250,7 @@ def track_aircraft(beacon, body, check_date=True):
 
     if beacon['address'] in tracked_aircraft_repository.get_all_addresses() and check_date:
         # Remove outdated tracking
-        if datetime.date(tracked_aircraft_repository.get_flight(beacon['address']).timestamp) < datetime.today().date():
+        if datetime.date(tracked_aircraft_repository.get_flight(beacon['address'])['timestamp']) < datetime.today().date():
             tracked_aircraft_repository.delete_flight(beacon['address'])
             log.debug("Removed outdated tracking for: {}".format(beacon['address']))
         else:
