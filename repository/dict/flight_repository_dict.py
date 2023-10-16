@@ -21,4 +21,4 @@ class FlightRepositoryDict:
             self.flight_dict[flight_json['address']] = flight_json
 
     def delete_flight(self, address):
-        self.flight_dict[address].pop()
+        self.flight_dict.pop(address)

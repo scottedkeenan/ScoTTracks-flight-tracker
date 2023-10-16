@@ -25,4 +25,4 @@ class AerotowRepositoryDict:
         self.aerotow_dict[key] = aerotow_json
 
     def delete_aerotow(self, key):
-        self.aerotow_dict[key].pop()
+        self.aerotow_dict.pop(key)
