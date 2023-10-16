@@ -203,19 +203,21 @@ class Flight:
         if self.nearest_airfield:
             return self.altitude - self.nearest_airfield['elevation']
 
-    def recent_launch_averages(self):
-        if self.mean_recent_launch_altitude and self.mean_recent_launch_latitude and self.mean_recent_launch_longitude:
-            return {
-                'altitude': self.mean_recent_launch_altitude,
-                'latitude': self.mean_recent_launch_latitude,
-                'longitude': self.mean_recent_launch_longitude
-            }
-        else:
-            return None
+    #todo: consider deletion:
+    # def recent_launch_averages(self):
+    #     if self.mean_recent_launch_altitude and self.mean_recent_launch_latitude and self.mean_recent_launch_longitude:
+    #         return {
+    #             'altitude': self.mean_recent_launch_altitude,
+    #             'latitude': self.mean_recent_launch_latitude,
+    #             'longitude': self.mean_recent_launch_longitude
+    #         }
+    #     else:
+    #         return None
 
     def update_aerotow(self, aerotow_repository, beacon):
         if self.aerotow_key:
             aerotow = aerotow_repository.get_aerotow(self.aerotow_key).insert_data(self, beacon)
+            aerotow.insert_data(beacon)
 
     def reset(self):
         self.takeoff_timestamp = None

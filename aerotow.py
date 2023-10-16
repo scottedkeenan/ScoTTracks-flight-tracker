@@ -4,6 +4,9 @@ from geopy import distance as measure_distance
 import os
 from statistics import mean
 import logging
+from collections import Counter
+
+import flight_processor
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 log = logging.getLogger(__name__)
@@ -14,8 +17,8 @@ class Aerotow:
         log.info('Creating new AT object')
 
         self.flights = {
-            flight1.address: flight1,
-            flight2.address:  flight2
+            flight1['address']: flight1,
+            flight2['address']:  flight2
         }
 
         # log.info('[A/T] flights: {}'.format(pprint.pformat(self.flights)))
@@ -27,8 +30,8 @@ class Aerotow:
         # values are dict of {g-cgcu: {alt:1, lat:1, lon:1, g-cief :{...}}
         self._beacons = {}
         # get earliest takeoff timestamp for the pair
-        self._start_beacons = {flight1.takeoff_timestamp: flight1,
-                              flight2.takeoff_timestamp: flight2}
+        self._start_beacons = {flight1['takeoff_timestamp']: flight1,
+                              flight2['takeoff_timestamp']: flight2}
         # pprint.pprint(self._start_beacons)
         # print(list(self._start_beacons.keys()))
 
@@ -41,42 +44,42 @@ class Aerotow:
             latest_flight = self._start_beacons[self._latest_time]
 
             self._beacons[self._earliest_time]= {
-                earliest_flight.address: {
-                    'altitude': earliest_flight.last_altitude,
-                    'latitude': earliest_flight.last_latitude,
-                    'longitude': earliest_flight.last_longitude
+                earliest_flight['address']: {
+                    'altitude': earliest_flight['last_altitude'],
+                    'latitude': earliest_flight['last_latitude'],
+                    'longitude': earliest_flight['last_longitude']
                 }
             }
 
             self.count_forwards(self._latest_time)
 
             self._beacons[self._latest_time]= {
-                latest_flight.address: {
-                    'altitude': latest_flight.last_altitude,
-                    'latitude': latest_flight.last_latitude,
-                    'longitude': latest_flight.last_longitude
+                latest_flight['address']: {
+                    'altitude': latest_flight['last_altitude'],
+                    'latitude': latest_flight['last_latitude'],
+                    'longitude': latest_flight['last_longitude']
                 }
             }
         else:
             self._earliest_time = min(list(self._start_beacons.keys()))
 
             self._beacons[self._earliest_time]= {
-                flight1.address: {
-                    'altitude': flight1.last_altitude,
-                    'latitude': flight1.last_latitude,
-                    'longitude': flight1.last_longitude
+                flight1['address']: {
+                    'altitude': flight1['last_altitude'],
+                    'latitude': flight1['last_latitude'],
+                    'longitude': flight2['last_longitude']
                 },
-                flight2.address: {
-                    'altitude': flight2.last_altitude,
-                    'latitude': flight2.last_latitude,
-                    'longitude': flight2.last_longitude
+                flight2['address']: {
+                    'altitude': flight2['last_altitude'],
+                    'latitude': flight2['last_latitude'],
+                    'longitude': flight2['last_longitude']
                 }
             }
 
         self.check_counter_datetime = self._earliest_time
 
-        self.flight_beacon_counts[flight1.address] = 1
-        self.flight_beacon_counts[flight2.address] = 1
+        self.flight_beacon_counts[flight1['address']] = 1
+        self.flight_beacon_counts[flight2['address']] = 1
 
         log.debug('[A/T] Initial beacons: {}'.format(pprint.pformat(self._beacons)))
 
@@ -91,7 +94,7 @@ class Aerotow:
 
         # when an aircraft with an aerotow launch type gets a timestamp the dict is updated
 
-        if self.flights[flight.address].launch_rec_name and beacon['receiver_name'] != self.flights[flight.address].launch_rec_name:
+        if self.flights[flight['address']].launch_rec_name and beacon['receiver_name'] != self.flights[flight['address']].launch_rec_name:
             # exit early if there is a common rec name and this isn't from it
             log.info("Skipping aerotow tracking: this beacon isn't from the common receiver")
             return
@@ -106,7 +109,7 @@ class Aerotow:
         # if self._beacons[beacon['timestamp']]:
         try:
             # if the correct timestamp exists, just slot the data in
-            self._beacons[beacon['timestamp']][flight.address] = {
+            self._beacons[beacon['timestamp']][flight['address']] = {
                     'altitude': beacon['altitude'],
                     'latitude': beacon['latitude'],
                     'longitude': beacon['longitude']
@@ -115,17 +118,17 @@ class Aerotow:
             log.info('Timestamp {} missing from aerotow beacon keys'.format(beacon['timestamp']))
             pass
 
-        self.flight_beacon_counts[flight.address] += 1
+        self.flight_beacon_counts[flight['address']] += 1
 
-        self.check_complete(beacon, self.flights[flight.address])
+        self.check_complete(beacon, self.flights[flight['address']])
 
     def abort(self):
         # logging.info('[A/T] failure beacons: {}'.format(pprint.pformat(self._beacons)))
         for flight in self.flights.values():
-            flight.launch_complete = True
-            flight.launch_height = None
+            flight['launch_complete'] = True
+            flight['launch_height'] = None
 
-    def check_complete(self, beacon, beacon_flight):
+    def check_complete(self, flight_repository, beacon, beacon_flight):
 
         # every 10 seconds check the average vertical/horizontal separation for the last 10 seconds
         # if they are outside parameters, mark the involved aircraft as launched, update the launch heights
@@ -138,7 +141,6 @@ class Aerotow:
                 # set the pair to use only the most commonly seen beacon
                 flight_addressess = list(self.flights.keys())
                 if not self.flights[flight_addressess[0]].launch_rec_name:
-                    from collections import Counter
                     data = Counter(
                         [i['receiver'] for i in self.flights[flight_addressess[0]].last_pings] + [i['receiver'] for i in self.flights[flight_addressess[1]].last_pings])
                     common_rec_name = (data.most_common(1)[0][0])
@@ -202,29 +204,35 @@ class Aerotow:
                         'Aerotow involving {} and {} is complete at {} with a vertical separation of {} at a height of {} ({} ft)'.format(
                             self.flights[average_addresses[0]].address if self.flights[average_addresses[0]].registration == 'UNKNOWN' else self.flights[average_addresses[0]].registration,
                             self.flights[average_addresses[1]].address if self.flights[average_addresses[1]].registration == 'UNKNOWN' else self.flights[average_addresses[1]].registration,
-                            beacon_flight.takeoff_airfield,
+                            beacon_flight['takeoff_airfield'],
                             vertical_separation,
-                            beacon_flight.launch_height,
-                            beacon_flight.launch_height * 3.281
+                            beacon_flight['launch_height'],
+                            beacon_flight['launch_height'] * 3.281
                         ))
                     log.info('Horizontal separation was: {}'.format(horizontal_separation))
-                    beacon_flight.launch_complete = True
-                    beacon_flight.tug.launch_complete = True
+                    beacon_flight['launch_complete'] = True
+                    flight_repository.update_flight(beacon_flight)
+                    tug_flight = flight_repository.get_flight(beacon_flight['tug'])
+                    tug_flight['launch_complete'] = True
+                    flight_repository.update_flight(tug_flight)
                     return
 
                 if horizontal_separation > 300:
                     log.info(
                         'Aerotow involving {} and {} is complete at {} with a horizontal separation of {} at a height of {} ({} ft)'.format(
-                            self.flights[average_addresses[0]].address if self.flights[average_addresses[0]].registration == 'UNKNOWN' else self.flights[average_addresses[0]].registration,
-                            self.flights[average_addresses[1]].address if self.flights[average_addresses[1]].registration == 'UNKNOWN' else self.flights[average_addresses[1]].registration,
-                            beacon_flight.takeoff_airfield,
+                            self.flights[average_addresses[0]]['address'] if self.flights[average_addresses[0]]['registration'] == 'UNKNOWN' else self.flights[average_addresses[0]]['registration'],
+                            self.flights[average_addresses[1]]['address'] if self.flights[average_addresses[1]]['registration'] == 'UNKNOWN' else self.flights[average_addresses[1]]['registration'],
+                            beacon_flight['takeoff_airfield'],
                             horizontal_separation,
-                            beacon_flight.launch_height,
-                            beacon_flight.launch_height * 3.281
+                            beacon_flight['launch_height'],
+                            beacon_flight['launch_height'] * 3.281
                         ))
                     log.info('Vertical separation was: {}'.format(vertical_separation))
-                    beacon_flight.launch_complete = True
-                    beacon_flight.tug.launch_complete = True
+                    beacon_flight['launch_complete'] = True
+                    flight_repository.update_flight(beacon_flight)
+                    tug_flight = flight_repository.get_flight(beacon_flight['tug'])
+                    tug_flight['launch_complete'] = True
+                    flight_repository.update(tug_flight)
                     return
 
 

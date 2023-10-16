@@ -14,8 +14,11 @@ class FlightRepositoryDict:
     def get_all_addresses(self):
         return self.flight_dict.keys()
 
-    def update_flight(self, address, flight_json):
-        self.flight_dict[address] = flight_json
+    def update_flight(self, flight_json, address=None):
+        if address:
+            self.flight_dict[address] = flight_json
+        else:
+            self.flight_dict[flight_json['address']] = flight_json
 
     def delete_flight(self, address):
         self.flight_dict[address].pop()
