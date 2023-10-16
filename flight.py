@@ -6,6 +6,7 @@ import logging
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 log = logging.getLogger(__name__)
 
+
 class Flight:
     def __init__(self, nearest_airfield, address, aircraft_type, altitude, ground_speed, receiver_name, timestamp,
                  registration, aircraft_model, competition_number, distance_to_nearest_airfield=None, tug=None):
@@ -44,7 +45,7 @@ class Flight:
         self.last_pings = deque([], maxlen=10)
         self.launch_rec_name = None
 
-        self.aerotow = None
+        self.aerotow_key = None
 
     def to_dict(self):
 
@@ -212,9 +213,9 @@ class Flight:
         else:
             return None
 
-    def update_aerotow(self, beacon):
-        if self.aerotow:
-            self.aerotow.insert_data(self, beacon)
+    def update_aerotow(self, aerotow_repository, beacon):
+        if self.aerotow_key:
+            aerotow = aerotow_repository.get_aerotow(self.aerotow_key).insert_data(self, beacon)
 
     def reset(self):
         self.takeoff_timestamp = None
@@ -239,5 +240,5 @@ class Flight:
         self.last_pings = deque([], maxlen=10)
         self.launch_rec_name = None
 
-        self.aerotow = None
+        self.aerotow_key = None
 

@@ -33,6 +33,9 @@ from statistics import mean, StatisticsError
 
 from ogn_ddb import import_device_data
 
+from repository.dict.flight_repository_dict import FlightRepositoryDict
+from repository.dict.aerotow_repository_dict import AerotowRepositoryDict
+
 config = configparser.ConfigParser()
 config.read('config.ini')
 
@@ -59,7 +62,8 @@ BEACON_CORRECTIONS = import_beacon_correction_data()
 
 log.info(pprint.pformat(BEACON_CORRECTIONS))
 
-tracked_aircraft = {}
+tracked_aircraft_repository = FlightRepositoryDict()
+aerotow_repository = AerotowRepositoryDict()
 
 connection_pool = pooling.MySQLConnectionPool(pool_name="pynative_pool",
                                               pool_size=5,
@@ -136,13 +140,13 @@ def detect_airfield(beacon, flight):
 
 def detect_tug(tracked_aircraft, flight):
     log.debug('Looking for a tug launch for {}'.format(flight.registration))
-    for address in tracked_aircraft:
-        if flight.aircraft_type == 2:
-            log.info('This IS a tug!')
-            return False
+    if flight.aircraft_type == 2:
+        log.info('This IS a tug!')
+        return False
+    for address in tracked_aircraft.get_all_addresses():
         if address == flight.address:
             continue
-        other_flight = tracked_aircraft[address]
+        other_flight = tracked_aircraft.get_flight(address)
         if other_flight.takeoff_timestamp and other_flight.takeoff_airfield == flight.takeoff_airfield:
             time_difference = (other_flight.takeoff_timestamp - flight.takeoff_timestamp).total_seconds()
             if -10 < time_difference < 10:
@@ -162,11 +166,13 @@ def detect_tug(tracked_aircraft, flight):
                     flight.launch_type = 'aerotow_pair'
                     other_flight.launch_type = 'aerotow_pair'
                 aerotow = Aerotow(flight, other_flight)
-                flight.tug = other_flight
-                flight.aerotow = aerotow
-                other_flight.tug = flight
-                other_flight.aerotow = aerotow
-                return True
+                aerotow_key = aerotow_repository.add_aerotow(aerotow)
+                if aerotow_key:
+                    flight.tug = other_flight
+                    flight.aerotow_key = aerotow_key
+                    other_flight.tug = flight
+                    other_flight.aerotow_key = aerotow_key
+                    return True
 
 def save_beacon(body, flight):
     # Types:
@@ -235,15 +241,15 @@ def track_aircraft(beacon, body, check_date=True):
         # log.info('No correction to apply for {} beacon. Alt: {}'.format(beacon['receiver_name'], beacon['altitude']))
         pass
 
-    if beacon['address'] in tracked_aircraft.keys() and check_date:
+    if beacon['address'] in tracked_aircraft_repository.get_all_addresses() and check_date:
         # Remove outdated tracking
-        if datetime.date(tracked_aircraft[beacon['address']].timestamp) < datetime.today().date():
-            tracked_aircraft.pop(beacon['address'])
+        if datetime.date(tracked_aircraft_repository.get_flight(beacon['address']).timestamp) < datetime.today().date():
+            tracked_aircraft_repository.delete_flight(beacon['address'])
             log.debug("Removed outdated tracking for: {}".format(beacon['address']))
         else:
             log.debug('Tracking checked and is up to date')
 
-    if beacon['address'] not in tracked_aircraft.keys():
+    if beacon['address'] not in tracked_aircraft_repository.get_all_addresses():
         try:
             db_conn = make_database_connection()
             device = get_device_data_by_address(db_conn.cursor(dictionary=True), beacon['address'])
@@ -283,7 +289,7 @@ def track_aircraft(beacon, body, check_date=True):
                 no_track_flight.timestamp = beacon['timestamp'].replace(
                     hour=0, minute=0, second=0
                 )
-                tracked_aircraft[beacon['address']] = no_track_flight
+                tracked_aircraft_repository.add_flight(beacon['address'], no_track_flight)
                 return
         else:
             log.info('Setting device data to unknowns')
@@ -349,11 +355,11 @@ def track_aircraft(beacon, body, check_date=True):
         log.info("Ground speed: {} | Alt: {} | time: {}".format(beacon['ground_speed'], beacon['altitude'],
                                                                 beacon['timestamp']))
 
-        tracked_aircraft[beacon['address']] = new_flight
+        tracked_aircraft_repository.add_flight(beacon['address'], new_flight)
         save_beacon(body, new_flight)
     else:
         log.debug('Updating tracked aircraft')
-        flight = tracked_aircraft[beacon['address']]
+        flight = tracked_aircraft_repository.get_flight(beacon['address'])
         if flight.aircraft_type == 'no_track':
             return
 
@@ -459,7 +465,7 @@ def track_aircraft(beacon, body, check_date=True):
 
                     if not flight.launch_type:
                         # detect tug will update the launch type if a flarm tug is detected
-                        if not detect_tug(tracked_aircraft, flight):
+                        if not detect_tug(tracked_aircraft_repository, flight):
                             log.debug(
                                 f"{flight.registration} launch beacon heights {len(flight.launch_beacon_heights)}")
                             if len(flight.launch_beacon_heights) >= 5:
@@ -518,13 +524,13 @@ def track_aircraft(beacon, body, check_date=True):
 
                 if flight.launch_type in ['aerotow_glider', 'aerotow_pair', 'aerotow_tug']:
                     try:
-                        flight.update_aerotow(beacon)
+                        flight.update_aerotow(aerotow_repository, beacon)
                     except AttributeError as err:
                         log.error(err)
                         log.error(
                             'Something went wrong with aerotow update for {}/{}, aborting'.format(flight.registration,
                                                                                                   flight.address))
-                        flight.aerotow.abort()
+                        flight.aerotow_key.abort()
 
                 if flight.launch_type in ['aerotow_sl', 'tug']:
                     try:
@@ -616,7 +622,8 @@ def track_aircraft(beacon, body, check_date=True):
                             print(e)
                             raise e
 
-                    tracked_aircraft[flight.address].reset()
+                    flight.reset()
+                    tracked_aircraft_repository.update_flight(flight.address, flight)
                     db_conn.close()
 
 
@@ -682,11 +689,11 @@ for db_flight in database_flights:
     db_tracked_flight.launch_complete = True if db_flight['launch_complete'] == 1 else False
     db_tracked_flight.tug = db_flight['tug_registration']
 
-    tracked_aircraft[db_tracked_flight.address] = db_tracked_flight
+    tracked_aircraft_repository.add_flight(db_tracked_flight.address, db_tracked_flight)
 
 log.info("Database flights =========")
-for aircraft in tracked_aircraft:
-    log.info(pprint.pformat(tracked_aircraft[aircraft].to_dict()))
+for aircraft_address in tracked_aircraft_repository.get_all_addresses():
+    log.info(pprint.pformat(tracked_aircraft_repository.get_flight(aircraft_address).to_dict()))
 log.info("=========")
 
 
