@@ -729,7 +729,7 @@ def connect_to_queue():
     channel = connection.channel()
 
     # channel.basic_consume(queue='received_beacons',
-    channel.basic_consume(queue='beacons_to_save',
+    channel.basic_consume(queue='received_beacons',
                           auto_ack=True,
                           on_message_callback=process_beacon)
 
