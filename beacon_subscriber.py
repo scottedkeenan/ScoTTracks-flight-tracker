@@ -2,7 +2,6 @@ import configparser
 import json
 import logging
 import os
-import pprint
 
 import pika
 
@@ -12,7 +11,6 @@ from ogn.client import AprsClient
 from ogn.parser import parse, ParseError
 
 from flight_tracker_squirreler import get_filters_by_country_codes
-import time
 from datetime import date, datetime
 
 config = configparser.ConfigParser()

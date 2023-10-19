@@ -1,5 +1,5 @@
 def build_aerotow_key(aerotow):
-    flight_addresses = sorted(aerotow.flights.keys())
+    flight_addresses = sorted(aerotow['flights'].keys())
     return '_'.join(flight_addresses)
 
 

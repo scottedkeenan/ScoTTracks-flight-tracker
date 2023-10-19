@@ -1,9 +1,11 @@
 from collections import deque
-from datetime import datetime
 from statistics import mean
 import os
 
 import logging
+
+import aerotow_processor
+
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 log = logging.getLogger(__name__)
 
@@ -133,6 +135,7 @@ def set_launch_type(flight_data, launch_type):
                 flight_data['launch_type']
             ))
 
+
 def update(flight_data, beacon):
     flight_data['altitude'] = beacon['altitude']
 
@@ -182,9 +185,10 @@ def update(flight_data, beacon):
         flight_data['last_pings'] = list(last_pings)
 
 
-def update_aerotow(flight_data, aerotow_repository, beacon):
+def update_aerotow(flight_data, beacon, flight_repository, aerotow_repository):
     if flight_data['aerotow_key']:
-        aerotow_repository.get_aerotow(flight_data['aerotow_key']).insert_data(flight_data, beacon)
+        aerotow_data = aerotow_repository.get_aerotow(flight_data['aerotow_key'])
+        aerotow_processor.insert_areotow_data(aerotow_data, flight_data, beacon, flight_repository)
 
 
 def reset(flight_data):
@@ -211,55 +215,3 @@ def reset(flight_data):
     flight_data['launch_rec_name'] = None
 
     flight_data['aerotow_key'] = None
-
-
-# class FlightProcessor:
-
-    # def to_dict(self):
-    #
-    #     try:
-    #         if self.tug:
-    #             tug_registration = self.tug.registration if self.tug.registration != 'UNKNOWN' else self.tug.address
-    #         else:
-    #             tug_registration = None
-    #     except AttributeError:
-    #         tug_registration = self.tug
-    #
-    #     return {
-    #         'nearest_airfield': self.nearest_airfield,
-    #         'address': self.address,
-    #         'aircraft_type': self.aircraft_type,
-    #         'altitude': self.altitude,
-    #         'ground_speed': self.ground_speed,
-    #         'receiver_name': self.receiver_name,
-    #         'timestamp': self.timestamp,# .strftime("%m/%d/%Y, %H:%M:%S")
-    #         'registration': self.registration,
-    #         'aircraft_model': self.aircraft_model,
-    #         'competition_number': self.competition_number,
-    #
-    #         'takeoff_timestamp': self.takeoff_timestamp,
-    #         'takeoff_airfield': self.takeoff_airfield,
-    #         'landing_timestamp': self.landing_timestamp,
-    #         'landing_airfield': self.landing_airfield,
-    #         'status': self.status,
-    #         'launch_height': self.launch_height,
-    #         'launch_type': self.launch_type,
-    #         'average_launch_climb_rate': self.average_launch_climb_rate,
-    #         'max_launch_climb_rate': self.max_launch_climb_rate,
-    #         'launch_climb_rates': self.launch_climb_rates,
-    #         'launch_complete': self.launch_complete,
-    #         'distance_to_nearest_airfield': self.distance_to_nearest_airfield,
-    #         'tug': tug_registration
-    #
-    #     }
-
-
-    # def recent_launch_averages(self):
-    #     if self.mean_recent_launch_altitude and self.mean_recent_launch_latitude and self.mean_recent_launch_longitude:
-    #         return {
-    #             'altitude': self.mean_recent_launch_altitude,
-    #             'latitude': self.mean_recent_launch_latitude,
-    #             'longitude': self.mean_recent_launch_longitude
-    #         }
-    #     else:
-    #         return None

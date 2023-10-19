@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import pprint
-import time
 
 import pika
 from pika.exceptions import StreamLostError
@@ -23,11 +22,8 @@ from geopy import distance as measure_distance
 
 from scipy.spatial import kdtree
 
-# from flight import Flight
-
 import flight_processor
-
-from aerotow import Aerotow
+import aerotow_processor
 
 from charts import json_datetime_converter
 
@@ -170,7 +166,7 @@ def detect_tug(tracked_aircraft, flight):
                             flight['nearest_airfield']['name']))
                     flight['launch_type'] = 'aerotow_pair'
                     other_flight['launch_type'] = 'aerotow_pair'
-                aerotow = Aerotow(flight, other_flight)
+                aerotow = aerotow_processor.new_aerotow(flight, other_flight)
                 aerotow_key = aerotow_repository.add_aerotow(aerotow)
                 if aerotow_key:
                     flight['tug'] = other_flight['address']
@@ -328,7 +324,7 @@ def track_aircraft(beacon, body, check_date=True):
             log.info('Checking if this detection can be treated as a launch')
 
             # if low enough and near enough, treat as a launch
-            # Todo: set landing esimate too - when an aircraft is detected for the first time in a while, check if its last beacon looked like a landing
+            # Todo: set landing estimate too - when an aircraft is detected for the first time in a while, check if its last beacon looked like a landing
 
             # Strictly reject if timedelta is too large
             beacon_delta = (beacon['reference_timestamp'] - beacon['timestamp']).total_seconds()
@@ -543,13 +539,14 @@ def track_aircraft(beacon, body, check_date=True):
 
                 if flight['launch_type'] in ['aerotow_glider', 'aerotow_pair', 'aerotow_tug']:
                     try:
-                        flight_processor.update_aerotow(flight, aerotow_repository, beacon)
+                        flight_processor.update_aerotow(flight, beacon, tracked_aircraft_repository, aerotow_repository)
                     except AttributeError as err:
                         log.error(err)
                         log.error(
                             'Something went wrong with aerotow update for {}/{}, aborting'.format(flight['registration'],
                                                                                                   flight['address']))
-                        aerotow_repository.get_aerotow(flight['aerotow_key']).abort()
+                        aerotow_data = aerotow_repository.get_aerotow(flight['aerotow_key'])
+                        aerotow_processor.abort(aerotow_data)
 
                 if flight['launch_type'] in ['aerotow_sl', 'tug']:
                     try:
@@ -627,8 +624,7 @@ def track_aircraft(beacon, body, check_date=True):
                         flight['landing_timestamp']))
 
                     log.debug('ALT GRAPH? ' + config['TRACKER']['draw_alt_graph'])
-                    if config['TRACKER']['draw_alt_graph'] == 'true' and flight['takeoff_timestamp'] and flight[
-                        'landing_timestamp']:
+                    if config['TRACKER']['draw_alt_graph'] == 'true' and flight['takeoff_timestamp'] and flight['landing_timestamp']:
                         chart_payload = {
                             'takeoff_timestamp': flight['takeoff_timestamp'],
                             'landing_timestamp': flight['landing_timestamp'],
