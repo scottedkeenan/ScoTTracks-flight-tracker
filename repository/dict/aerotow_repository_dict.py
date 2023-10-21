@@ -9,6 +9,7 @@ class AerotowRepositoryDict:
 
     def add_aerotow(self, aerotow_json):
         key = build_aerotow_key(aerotow_json)
+        aerotow_json['aerotow_key'] = key
         self.aerotow_dict[key] = aerotow_json
         return key
 
@@ -21,7 +22,9 @@ class AerotowRepositoryDict:
     def get_all_addresses(self):
         return self.aerotow_dict.keys()
 
-    def update_aerotow(self, key, aerotow_json):
+    def update_aerotow(self, aerotow_json, key=None):
+        if not key:
+            key = aerotow_json['aerotow_key']
         self.aerotow_dict[key] = aerotow_json
 
     def delete_aerotow(self, key):

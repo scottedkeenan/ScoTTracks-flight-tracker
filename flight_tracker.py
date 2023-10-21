@@ -546,7 +546,7 @@ def track_aircraft(beacon, body, check_date=True):
                             'Something went wrong with aerotow update for {}/{}, aborting'.format(flight['registration'],
                                                                                                   flight['address']))
                         aerotow_data = aerotow_repository.get_aerotow(flight['aerotow_key'])
-                        aerotow_processor.abort(aerotow_data)
+                        aerotow_processor.abort(aerotow_data, aerotow_repository, tracked_aircraft_repository)
 
                 if flight['launch_type'] in ['aerotow_sl', 'tug']:
                     try:
@@ -600,7 +600,7 @@ def track_aircraft(beacon, body, check_date=True):
                     if flight['takeoff_timestamp'] and not flight['launch_complete']:
                         if flight['launch_type'] in ['aerotow_glider', 'aerotow_pair', 'aerotow_tug']:
                             aerotow_data = aerotow_repository.get_aerotow(flight['aerotow_key'])
-                            aerotow_processor.abort(aerotow_data)
+                            aerotow_processor.abort(aerotow_data, aerotow_repository, tracked_aircraft_repository)
                         # flight['launch_type'] = 'winch l/f'
 
                     log.info("Updating aircraft {} as landed at {} @ {} Ref:[{}]".format(

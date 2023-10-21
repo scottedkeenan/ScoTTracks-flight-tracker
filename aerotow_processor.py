@@ -12,6 +12,7 @@ log = logging.getLogger(__name__)
 
 def new_aerotow(flight1, flight2):
     aerotow_data = {
+        'aerotow_key': None,
         'flights': {
             flight1['address']: flight1,
             flight2['address']: flight2
@@ -80,15 +81,20 @@ def count_forwards(aerotow_data, target_timestamp):
         aerotow_data['beacons'][new_timestamp] = {}
 
 
-def abort(aerotow_data):
-    #todo: Mark the flight objects as complete
+def abort(aerotow_data, aerotow_repository, flight_repository):
     # logging.info('[A/T] failure beacons: {}'.format(pprint.pformat(aerotow_data['beacons'])))
     for flight in aerotow_data['flights'].values():
         flight['launch_complete'] = True
         flight['launch_height'] = None
 
+        repository_flight = flight_repository.get_flight(flight['address'])
+        repository_flight['launch_complete'] = True
+        repository_flight['launch_height'] = None
+        flight_repository.update_flight(repository_flight)
+    aerotow_repository.update_aerotow(aerotow_data)
 
-def insert_areotow_data(aerotow_data, flight_data, beacon, flight_repository):
+
+def insert_aerotow_data(aerotow_data, flight_data, beacon, aerotow_repository, flight_repository):
     # when an aircraft with an aerotow launch type gets a timestamp the dict is updated
 
     if aerotow_data['flights'][flight_data['address']]['launch_rec_name'] and beacon['receiver_name'] != \
@@ -117,10 +123,10 @@ def insert_areotow_data(aerotow_data, flight_data, beacon, flight_repository):
 
     aerotow_data['flight_beacon_counts'][flight_data['address']] += 1
 
-    check_complete(aerotow_data, beacon, aerotow_data['flights'][flight_data['address']], flight_repository)
+    check_complete(aerotow_data, beacon, aerotow_data['flights'][flight_data['address']], aerotow_repository, flight_repository)
 
 
-def check_complete(aerotow_data, beacon, beacon_flight, flight_repository):
+def check_complete(aerotow_data, beacon, beacon_flight, aerotow_repository, flight_repository):
     # every 10 seconds check the average vertical/horizontal separation for the last 10 seconds
     # if they are outside parameters, mark the involved aircraft as launched, update the launch heights
 
@@ -175,10 +181,16 @@ def check_complete(aerotow_data, beacon, beacon_flight, flight_repository):
             log.info('average addresses: {}'.format(pprint.pformat(average_addresses)))
 
             if len(average_addresses) < 2:
-                logging.info('Lost track of an aircraft, waiting another 10 seconds')
                 aerotow_data['check_failures'] += 1
+                if aerotow_data['check_failures'] >= 5:
+                    # todo: switch to climb rate based a/t tracking
+                    abort(aerotow_data, aerotow_repository, flight_repository)
+                    log.info('Aborted aerotow tracking, too many failures')
+                    return
+                logging.info('Lost track of an aerotow aircraft, waiting another 10 seconds')
                 aerotow_data['check_counter_datetime'] = beacon['timestamp']
                 log.info('Check counter datetime now {}'.format(aerotow_data['check_counter_datetime']))
+                aerotow_repository.update_aerotow(aerotow_data)
                 return
             else:
                 aerotow_data['check_failures'] = 0
@@ -215,6 +227,7 @@ def check_complete(aerotow_data, beacon, beacon_flight, flight_repository):
                 tug_flight = flight_repository.get_flight(beacon_flight['tug'])
                 tug_flight['launch_complete'] = True
                 flight_repository.update_flight(tug_flight)
+                aerotow_repository.update_aerotow(aerotow_data)
                 return
 
             if horizontal_separation > 300:
@@ -237,14 +250,11 @@ def check_complete(aerotow_data, beacon, beacon_flight, flight_repository):
                 tug_flight = flight_repository.get_flight(beacon_flight['tug'])
                 tug_flight['launch_complete'] = True
                 flight_repository.update(tug_flight)
+                aerotow_repository.update_aerotow(aerotow_data)
                 return
-
             aerotow_data['check_counter_datetime'] = beacon['timestamp']
             log.debug('Check counter datetime now {}'.format(aerotow_data['check_counter_datetime']))
-        elif aerotow_data['check_failures'] >= 5:
-            # todo: switch to climb rate based a/t tracking
-            log.info('abort tracking, too many failures')
-            abort(aerotow_data)
+            aerotow_repository.update_aerotow(aerotow_data)
 
 # work out which is in front (tug)
 # update the aircraft with their types

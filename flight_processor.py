@@ -188,7 +188,8 @@ def update(flight_data, beacon):
 def update_aerotow(flight_data, beacon, flight_repository, aerotow_repository):
     if flight_data['aerotow_key']:
         aerotow_data = aerotow_repository.get_aerotow(flight_data['aerotow_key'])
-        aerotow_processor.insert_areotow_data(aerotow_data, flight_data, beacon, flight_repository)
+        aerotow_processor.insert_aerotow_data(aerotow_data, flight_data, beacon, aerotow_repository, flight_repository)
+        aerotow_repository.update_aerotow(aerotow_data, flight_data['aerotow_key'])
 
 
 def reset(flight_data):
