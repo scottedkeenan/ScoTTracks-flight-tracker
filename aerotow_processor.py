@@ -81,6 +81,7 @@ def count_forwards(aerotow_data, target_timestamp):
 
 
 def abort(aerotow_data):
+    #todo: Mark the flight objects as complete
     # logging.info('[A/T] failure beacons: {}'.format(pprint.pformat(aerotow_data['beacons'])))
     for flight in aerotow_data['flights'].values():
         flight['launch_complete'] = True

@@ -84,7 +84,7 @@ def make_database_connection():
 db_conn = make_database_connection()
 
 log.info('Importing device data')
-import_device_data(db_conn, config['TRACKER']['device_data_url'])
+# import_device_data(db_conn, config['TRACKER']['device_data_url'])
 
 AIRFIELD_DATA = {}
 for airfield in get_airfields_for_countries(db_conn.cursor(dictionary=True),
@@ -582,7 +582,7 @@ def track_aircraft(beacon, body, check_date=True):
                     except StatisticsError:
                         log.info("No data to average, skipping")
 
-            elif flight['status'] == 'air' \
+            if flight['status'] == 'air' \
                     and beacon['ground_speed'] < float(config['TRACKER']['landing_detection_speed']) \
                     and flight_processor.height_agl(flight) < float(config['TRACKER']['landing_detection_agl']) \
                     and flight['distance_to_nearest_airfield'] < float(config['TRACKER']['airfield_detection_radius']) \
@@ -598,7 +598,10 @@ def track_aircraft(beacon, body, check_date=True):
                     flight['landing_airfield'] = flight['nearest_airfield']['id']
 
                     if flight['takeoff_timestamp'] and not flight['launch_complete']:
-                        flight['launch_type'] = 'winch l/f'
+                        if flight['launch_type'] in ['aerotow_glider', 'aerotow_pair', 'aerotow_tug']:
+                            aerotow_data = aerotow_repository.get_aerotow(flight['aerotow_key'])
+                            aerotow_processor.abort(aerotow_data)
+                        # flight['launch_type'] = 'winch l/f'
 
                     log.info("Updating aircraft {} as landed at {} @ {} Ref:[{}]".format(
                         flight['address'] if flight['registration'] == 'UNKNOWN' else flight['registration'],
