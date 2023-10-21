@@ -84,7 +84,7 @@ def make_database_connection():
 db_conn = make_database_connection()
 
 log.info('Importing device data')
-# import_device_data(db_conn, config['TRACKER']['device_data_url'])
+import_device_data(db_conn, config['TRACKER']['device_data_url'])
 
 AIRFIELD_DATA = {}
 for airfield in get_airfields_for_countries(db_conn.cursor(dictionary=True),
