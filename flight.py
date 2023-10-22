@@ -119,7 +119,7 @@ class Flight:
                     'latitude': beacon['latitude'],
                     'longitude': beacon['longitude'],
                     'receiver': beacon['receiver_name'],
-                    'signal': beacon['signal_quality']
+                    # 'signal': beacon['signal_quality']
                 })
             if len(self.last_pings) == 10:
                 # it's a deque ^
