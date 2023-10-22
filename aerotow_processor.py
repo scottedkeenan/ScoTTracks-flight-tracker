@@ -100,7 +100,7 @@ def insert_aerotow_data(aerotow_data, flight_data, beacon, aerotow_repository, f
     if aerotow_data['flights'][flight_data['address']]['launch_rec_name'] and beacon['receiver_name'] != \
             aerotow_data['flights'][flight_data['address']]['launch_rec_name']:
         # exit early if there is a common rec name and this isn't from it
-        log.info("Skipping aerotow tracking: this beacon isn't from the common receiver")
+        log.debug("Skipping aerotow tracking: this beacon isn't from the common receiver")
         return
     if beacon['timestamp'] < list(aerotow_data['beacons'].keys())[0]:
         # exit early if this is from the past
