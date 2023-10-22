@@ -208,11 +208,11 @@ def check_complete(aerotow_data, beacon, beacon_flight, aerotow_repository, flig
             if vertical_separation > 50 or vertical_separation < -50:
                 log.info(
                     'Aerotow involving {} and {} is complete at {} with a vertical separation of {} at a height of {} ({} ft)'.format(
-                        aerotow_data['flights'][average_addresses[0]].address if aerotow_data['flights'][
+                        aerotow_data['flights'][average_addresses[0]]['address'] if aerotow_data['flights'][
                                                                                      average_addresses[
                                                                                          0]]['registration'] == 'UNKNOWN' else
                         aerotow_data['flights'][average_addresses[0]]['registration'],
-                        aerotow_data['flights'][average_addresses[1]].address if aerotow_data['flights'][
+                        aerotow_data['flights'][average_addresses[1]]['address'] if aerotow_data['flights'][
                                                                                      average_addresses[
                                                                                          1]]['registration'] == 'UNKNOWN' else
                         aerotow_data['flights'][average_addresses[1]]['registration'],
@@ -249,7 +249,7 @@ def check_complete(aerotow_data, beacon, beacon_flight, aerotow_repository, flig
                 flight_repository.update_flight(beacon_flight)
                 tug_flight = flight_repository.get_flight(beacon_flight['tug'])
                 tug_flight['launch_complete'] = True
-                flight_repository.update(tug_flight)
+                flight_repository.update_flight(tug_flight)
                 aerotow_repository.update_aerotow(aerotow_data)
                 return
             aerotow_data['check_counter_datetime'] = beacon['timestamp']
