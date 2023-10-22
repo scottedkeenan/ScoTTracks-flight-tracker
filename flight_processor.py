@@ -174,7 +174,7 @@ def update(flight_data, beacon):
                 'latitude': beacon['latitude'],
                 'longitude': beacon['longitude'],
                 'receiver': beacon['receiver_name'],
-                'signal': beacon['signal_quality']
+                # 'signal': beacon['signal_quality']
             })
         if len(last_pings) == 10:
             # it's a deque ^
