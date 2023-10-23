@@ -38,7 +38,7 @@ def new_flight():
         'launch_complete': False,
         'distance_to_nearest_airfield': None,
         'tug': None,
-        'at-partner': None,
+        'at_partner_registration': None,
         'last_latitude': None,
         'last_longitude': None,
         'last_altitude': None,
@@ -216,3 +216,4 @@ def reset(flight_data):
     flight_data['launch_rec_name'] = None
 
     flight_data['aerotow_key'] = None
+    flight_data['at_partner_registration'] = None

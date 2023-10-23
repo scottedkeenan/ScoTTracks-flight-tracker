@@ -170,10 +170,10 @@ def detect_tug(tracked_aircraft, flight):
                 aerotow_key = aerotow_repository.add_aerotow(aerotow)
                 if aerotow_key:
                     flight['tug'] = other_flight['address']
-                    flight['at-partner'] = other_flight['registration'] if other_flight['registration'] else other_flight['address']
+                    flight['at_partner_registration'] = other_flight['registration'] if other_flight['registration'] else other_flight['address']
                     flight['aerotow_key'] = aerotow_key
                     other_flight['tug'] = flight['address']
-                    other_flight['at-partner'] = flight['registration'] if flight['registration'] else flight['address']
+                    other_flight['at_partner_registration'] = flight['registration'] if flight['registration'] else flight['address']
                     other_flight['aerotow_key'] = aerotow_key
                     return True
 
