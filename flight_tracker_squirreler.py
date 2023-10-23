@@ -364,7 +364,7 @@ def update_flight(cursor, aircraft_data):
         aircraft_data['average_launch_climb_rate'],
         aircraft_data['max_launch_climb_rate'],
         aircraft_data['launch_complete'],
-        aircraft_data['at-partner'],
+        aircraft_data['at_partner_registration'],
 
         aircraft_data['address'],
         aircraft_data['takeoff_timestamp']
