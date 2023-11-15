@@ -62,6 +62,7 @@ BEACON_CORRECTIONS = import_beacon_correction_data()
 log.info(pprint.pformat(BEACON_CORRECTIONS))
 
 tracked_aircraft_repository = FlightRepositoryRedis(config)
+# tracked_aircraft_repository = FlightRepositoryDict()
 aerotow_repository = AerotowRepositoryDict()
 
 connection_pool = pooling.MySQLConnectionPool(pool_name="pynative_pool",
@@ -533,7 +534,7 @@ def track_aircraft(beacon, body, check_date=True):
                             flight['average_launch_climb_rate']
                         )
                     )
-                    log.info('Launch gradients: {}'.format(flight['launch_gradients']))
+                    # log.info('Launch gradients: {}'.format(flight['launch_gradients']))
                     db_conn = make_database_connection()
                     update_flight(db_conn.cursor(), flight)
                     db_conn.commit()

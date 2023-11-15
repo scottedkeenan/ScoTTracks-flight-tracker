@@ -98,7 +98,6 @@ def launch(flight_data, flight_repository, time_known=True):
     # if time_known:
     # todo set a flag
     if flight_data['nearest_airfield']['launch_type_detection']:
-        log.info('Yes to launch type detection')
         if flight_data['aircraft_type'] == 2:
             flight_data['launch_type'] = 'tug'
     else:
@@ -194,7 +193,6 @@ def update(flight_data, flight_repository, beacon):
 
 
 def update_aerotow(flight_data, beacon, flight_repository, aerotow_repository):
-    log.info('Updating aerotow for {}({})'.format(flight_data['address'], flight_data['registration']))
     if flight_data['aerotow_key']:
         aerotow_data = aerotow_repository.get_aerotow(flight_data['aerotow_key'])
         aerotow_processor.insert_aerotow_data(aerotow_data, flight_data, beacon, aerotow_repository, flight_repository)
