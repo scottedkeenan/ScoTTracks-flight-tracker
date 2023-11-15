@@ -32,6 +32,7 @@ from statistics import mean, StatisticsError
 from ogn_ddb import import_device_data
 
 from repository.dict.flight_repository_dict import FlightRepositoryDict
+from repository.redis.flight_repository_redis import FlightRepositoryRedis
 from repository.dict.aerotow_repository_dict import AerotowRepositoryDict
 
 config = configparser.ConfigParser()
@@ -60,7 +61,7 @@ BEACON_CORRECTIONS = import_beacon_correction_data()
 
 log.info(pprint.pformat(BEACON_CORRECTIONS))
 
-tracked_aircraft_repository = FlightRepositoryDict()
+tracked_aircraft_repository = FlightRepositoryRedis(config)
 aerotow_repository = AerotowRepositoryDict()
 
 connection_pool = pooling.MySQLConnectionPool(pool_name="pynative_pool",
@@ -120,7 +121,7 @@ def detect_airfield(beacon, flight):
     if flight['nearest_airfield'] and flight['distance_to_nearest_airfield']:
         current_distance_to_airfield = measure_distance.distance(
             [float(flight['nearest_airfield']['latitude']), float(flight['nearest_airfield']['longitude'])],
-            (beacon['latitude'], beacon['longitude']))
+            (beacon['latitude'], beacon['longitude'])).km
         if current_distance_to_airfield <= detection_radius:
             flight['distance_to_nearest_airfield'] = current_distance_to_airfield
             return
@@ -155,8 +156,6 @@ def detect_tug(tracked_aircraft, flight):
                         flight['nearest_airfield']['name']))
                     flight['launch_type'] = 'aerotow_glider'
                     other_flight['launch_type'] = 'aerotow_tug'
-                    tracked_aircraft.update_flight(flight)
-                    tracked_aircraft.update_flight(other_flight)
 
                 else:
                     log.info(
@@ -175,6 +174,9 @@ def detect_tug(tracked_aircraft, flight):
                     other_flight['tug'] = flight['address']
                     other_flight['at_partner_registration'] = flight['registration'] if flight['registration'] else flight['address']
                     other_flight['aerotow_key'] = aerotow_key
+
+                    tracked_aircraft.update_flight(flight)
+                    tracked_aircraft.update_flight(other_flight)
                     return True
 
 def save_beacon(body, flight):
@@ -339,7 +341,7 @@ def track_aircraft(beacon, body, check_date=True):
                         new_flight['nearest_airfield']['name'],
                         new_flight['timestamp']
                     ))
-                    flight_processor.launch(new_flight)
+                    flight_processor.launch(new_flight, tracked_aircraft_repository)
                     db_conn = make_database_connection()
                     add_flight(db_conn.cursor(), new_flight)
                     db_conn.commit()
@@ -378,7 +380,7 @@ def track_aircraft(beacon, body, check_date=True):
         # update fields of flight
         detect_airfield(beacon, flight)  # updates airfield and distance to airfield
         last_flight_timestamp = flight['timestamp']
-        flight_processor.update(flight, beacon)
+        flight_processor.update(flight, tracked_aircraft_repository, beacon)
 
         if flight['status'] == 'ground' and last_flight_timestamp <= timestamp:
 
@@ -393,7 +395,7 @@ def track_aircraft(beacon, body, check_date=True):
                         flight['nearest_airfield']['name'],
                         beacon['timestamp'],
                         beacon['reference_timestamp']))
-                    flight_processor.launch(flight)
+                    flight_processor.launch(flight, tracked_aircraft_repository)
                     db_conn = make_database_connection()
                     add_flight(db_conn.cursor(), flight)
                     db_conn.commit()
@@ -407,7 +409,7 @@ def track_aircraft(beacon, body, check_date=True):
                         flight['nearest_airfield']['name'],
                         flight['timestamp']))
                     # todo: use the time known arg below to srt flag in db
-                    flight_processor.launch(flight)
+                    flight_processor.launch(flight, tracked_aircraft_repository)
                     # todo: enum/dict the launch types 1: etc.
                     flight['launch_type'] = 'unknown, nearest field'
                     # prevent launch height tracking
@@ -427,7 +429,7 @@ def track_aircraft(beacon, body, check_date=True):
                         flight['nearest_airfield']['name'],
                         flight['timestamp']))
 
-                    flight_processor.launch(flight, time_known=False)
+                    flight_processor.launch(flight, tracked_aircraft_repository, time_known=False)
 
                     # todo: use the time known arg below to srt flag in db
                     # todo: enum/dict the launch types 1:winch etc.
@@ -492,7 +494,7 @@ def track_aircraft(beacon, body, check_date=True):
                                     log.info('{} detected winch launching at {}'.format(flight['registration'],
                                                                                         flight['nearest_airfield'][
                                                                                             'name']))
-                                    flight_processor.set_launch_type(flight, 'winch')
+                                    flight_processor.set_launch_type(flight, tracked_aircraft_repository, 'winch')
                                 elif len(flight['launch_beacon_heights']) >= 10:
                                     try:
                                         flight['average_launch_climb_rate'] = mean(
@@ -501,7 +503,7 @@ def track_aircraft(beacon, body, check_date=True):
                                         log.info("No data to average, skipping")
                                 log.info('{} detected aerotow (unknown tug) or self launching at {}'.format(
                                     flight['registration'], flight['nearest_airfield']['name']))
-                                flight_processor.set_launch_type(flight, 'aerotow_sl')
+                                flight_processor.set_launch_type(flight, tracked_aircraft_repository, 'aerotow_sl')
                 elif not flight['launch_complete']:
                     flight['launch_complete'] = True
                     log.info(
@@ -546,7 +548,7 @@ def track_aircraft(beacon, body, check_date=True):
                             'Something went wrong with aerotow update for {}/{}, aborting'.format(flight['registration'],
                                                                                                   flight['address']))
                         aerotow_data = aerotow_repository.get_aerotow(flight['aerotow_key'])
-                        aerotow_processor.abort(aerotow_data, aerotow_repository, tracked_aircraft_repository)
+                        aerotow_processor.abort(flight, aerotow_data, aerotow_repository, tracked_aircraft_repository)
 
                 if flight['launch_type'] in ['aerotow_sl', 'tug']:
                     try:
@@ -600,7 +602,8 @@ def track_aircraft(beacon, body, check_date=True):
                     if flight['takeoff_timestamp'] and not flight['launch_complete']:
                         if flight['launch_type'] in ['aerotow_glider', 'aerotow_pair', 'aerotow_tug']:
                             aerotow_data = aerotow_repository.get_aerotow(flight['aerotow_key'])
-                            aerotow_processor.abort(aerotow_data, aerotow_repository, tracked_aircraft_repository)
+                            aerotow_processor.abort(flight, aerotow_data, aerotow_repository, tracked_aircraft_repository)
+                            log.info('Aerotow {} aborted because aircraft {} landed'.format(flight['aerotow_key'], flight['address']))
                         # flight['launch_type'] = 'winch l/f'
 
                     log.info("Updating aircraft {} as landed at {} @ {} Ref:[{}]".format(
@@ -644,9 +647,9 @@ def track_aircraft(beacon, body, check_date=True):
                             print(e)
                             raise e
 
-                    flight_processor.reset(flight)
-                    tracked_aircraft_repository.update_flight(flight, flight['address'])
+                    flight_processor.reset(flight, tracked_aircraft_repository)
                     db_conn.close()
+        tracked_aircraft_repository.update_flight(flight, flight['address'])
 
 
 beacon_count = 0

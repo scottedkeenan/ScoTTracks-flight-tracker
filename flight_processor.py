@@ -1,4 +1,6 @@
+import pprint
 from collections import deque
+from datetime import datetime
 from statistics import mean
 import os
 
@@ -66,12 +68,16 @@ def height_agl(flight_data):
 
 def launch_gradient(flight_data):
     # beacons don't always arrive in timestamp order
-    last_launch_height = sorted(flight_data['launch_beacon_heights'])[-1]
-    if last_launch_height[0] == flight_data['takeoff_timestamp']:
+    try:
+        last_launch_height = sorted(flight_data['launch_beacon_heights'])[-1]
+    except TypeError:
+        launch_beacon_heights = [tuple(sublist) for sublist in flight_data['launch_beacon_heights']]
+        last_launch_height = sorted(launch_beacon_heights)[-1]
+    if last_launch_height[0] == flight_data['takeoff_timestamp'].timestamp():
         return 0
     try:
         return (last_launch_height[1] - flight_data['takeoff_detection_height']) / (
-                    last_launch_height[0] - flight_data['takeoff_timestamp']).total_seconds()
+                    datetime.fromtimestamp(last_launch_height[0]) - flight_data['takeoff_timestamp']).total_seconds()
     except TypeError:
         log.error('Bad gradient data: {}'.format(flight_data['registration']))
         log.error('({} - {})/({} - {})'.format(
@@ -83,7 +89,7 @@ def launch_gradient(flight_data):
         return False
 
 
-def launch(flight_data, time_known=True):
+def launch(flight_data, flight_repository, time_known=True):
     # if flight_data['status'] == 'ground':
     flight_data['status'] = 'air'
     flight_data['takeoff_airfield'] = flight_data['nearest_airfield']['id']
@@ -110,7 +116,7 @@ def launch(flight_data, time_known=True):
     #     log.error("Can't launch an airborne aircraft!")
 
 
-def set_launch_type(flight_data, launch_type):
+def set_launch_type(flight_data, flight_repository, launch_type):
     initial_launch_types = ['winch', 'aerotow_pair', 'aerotow_glider' 'self', 'tug', 'unknown, nearest field',
                             'aerotow_sl']
     updatable_launch_types = ['winch l/f']
@@ -136,7 +142,7 @@ def set_launch_type(flight_data, launch_type):
             ))
 
 
-def update(flight_data, beacon):
+def update(flight_data, flight_repository, beacon):
     flight_data['altitude'] = beacon['altitude']
 
     if flight_data['status'] == 'air' and not flight_data['launch_complete']:
@@ -150,8 +156,10 @@ def update(flight_data, beacon):
             elif height > flight_data['launch_height']:
                 flight_data['launch_height'] = height
 
-            flight_data['launch_climb_rates'][flight_data['timestamp']] = beacon['climb_rate']
-            flight_data['launch_beacon_heights'].append((flight_data['timestamp'], height_agl(flight_data)))
+            unix_timestamp = flight_data['timestamp']
+            unix_timestamp = unix_timestamp.timestamp()
+            flight_data['launch_climb_rates'][unix_timestamp] = beacon['climb_rate']
+            flight_data['launch_beacon_heights'].append((unix_timestamp, height_agl(flight_data)))
             gradient = launch_gradient(flight_data)
             flight_data['launch_gradients'].append(gradient)
 
@@ -163,13 +171,13 @@ def update(flight_data, beacon):
     flight_data['last_altitude'] = beacon['altitude']
 
     if flight_data['takeoff_timestamp'] and \
-            flight_data['launch_type'] not in ['aerotow_pair', 'aerotow_glider'] and \
-            not flight_data['launch_complete']:
+            not flight_data['launch_complete'] and \
+            flight_data['launch_type'] not in ['aerotow_pair', 'aerotow_glider']:
         # todo: consider if last pings should be in aerotow object
         last_pings = deque(flight_data['last_pings'], maxlen=10)
         last_pings.append(
             {
-                'timestamp': beacon['timestamp'],
+                # 'timestamp': beacon['timestamp'],
                 'altitude': beacon['altitude'],
                 'latitude': beacon['latitude'],
                 'longitude': beacon['longitude'],
@@ -186,13 +194,13 @@ def update(flight_data, beacon):
 
 
 def update_aerotow(flight_data, beacon, flight_repository, aerotow_repository):
+    log.info('Updating aerotow for {}({})'.format(flight_data['address'], flight_data['registration']))
     if flight_data['aerotow_key']:
         aerotow_data = aerotow_repository.get_aerotow(flight_data['aerotow_key'])
         aerotow_processor.insert_aerotow_data(aerotow_data, flight_data, beacon, aerotow_repository, flight_repository)
-        aerotow_repository.update_aerotow(aerotow_data, flight_data['aerotow_key'])
 
 
-def reset(flight_data):
+def reset(flight_data, flight_repository):
     flight_data['takeoff_timestamp'] = None
     flight_data['takeoff_airfield'] = None
     flight_data['landing_timestamp'] = None

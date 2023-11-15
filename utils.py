@@ -2,6 +2,7 @@ import configparser
 import json
 import logging
 import os
+from datetime import datetime, date
 
 import mysql.connector
 
@@ -39,3 +40,15 @@ def import_beacon_correction_data():
     except FileNotFoundError:
         log.error('No ogn beacon correction file found')
         return {}
+
+
+def json_serial(obj):
+    """JSON serializer for objects not serializable by default json code"""
+
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    raise TypeError ("Type %s not serializable" % type(obj))
+
+
+def json_deserial(timestamp_str):
+    return datetime.fromisoformat(timestamp_str)
