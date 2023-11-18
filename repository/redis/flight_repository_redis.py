@@ -5,7 +5,7 @@ import pprint
 
 import redis
 
-from utils import json_serial, json_deserial
+from json_utils import json_serial, json_deserial
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 log = logging.getLogger(__name__)

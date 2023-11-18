@@ -1,9 +1,21 @@
+import json
+import logging
+import os
+import pprint
+
+import redis
+
+from json_utils import json_serial, json_deserial
+
+logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
+log = logging.getLogger(__name__)
+
 def build_aerotow_key(aerotow):
     flight_addresses = sorted(aerotow['flights'].keys())
     return '_'.join(flight_addresses)
 
-
-class AerotowRepositoryDict:
+# TODO
+class AerotowRepositoryRedis:
     def __init__(self):
         self.aerotow_dict = {}
 

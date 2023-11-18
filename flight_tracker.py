@@ -33,7 +33,9 @@ from ogn_ddb import import_device_data
 
 from repository.dict.flight_repository_dict import FlightRepositoryDict
 from repository.redis.flight_repository_redis import FlightRepositoryRedis
+
 from repository.dict.aerotow_repository_dict import AerotowRepositoryDict
+from repository.redis.aerotow_repository_redis import AerotowRepositoryRedis
 
 config = configparser.ConfigParser()
 config.read('config.ini')
