@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import pprint
+import configparser
 
 import redis
 
@@ -60,12 +61,12 @@ class FlightRepositoryRedis:
             db=0,
             decode_responses=True)
 
+        self.config = configparser.ConfigParser()
+        config.read('/home/scott/PycharmProjects/flight_tracker/config.ini')
+
     def add_flight(self, address, flight_dict):
-        try:
-            return self.redis_client.set('flight_tracker_' + address, flight_to_string(flight_dict))
-        except TypeError:
-            print(flight_dict)
-            raise TypeError
+        return self.redis_client.set('flight_tracker_' + address, flight_to_string(flight_dict), ex=int(self.config['TRACKER']['redis_expiry']))
+
 
     def get_flight(self, address):
         return string_to_flight(self.redis_client.get('flight_tracker_' + address))
@@ -81,14 +82,10 @@ class FlightRepositoryRedis:
         return [x[-6:] for x in self.redis_client.scan_iter('flight_tracker_*')]
 
     def update_flight(self, flight_dict, address=None):
-
-        if address:
-            # log.info('Updating flight {}'.format(address))
-            return self.redis_client.set('flight_tracker_' + address, flight_to_string(flight_dict))
-        else:
-            # log.info('Updating flight {}'.format(flight_dict['address']))
-            return self.redis_client.set('flight_tracker_' + flight_dict['address'], flight_to_string(flight_dict))
-
+        if not address:
+            address = flight_dict['address']
+        # log.info('Updating flight {}'.format(address))
+        return self.redis_client.set('flight_tracker_' + address, flight_to_string(flight_dict), ex=int(self.config['TRACKER']['redis_expiry']))
 
     def delete_flight(self, address):
         return self.redis_client.delete('flight_tracker_' + address)
