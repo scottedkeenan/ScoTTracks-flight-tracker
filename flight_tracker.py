@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import pprint
+import traceback
 
 import pika
 from pika.exceptions import StreamLostError
@@ -65,7 +66,8 @@ log.info(pprint.pformat(BEACON_CORRECTIONS))
 
 tracked_aircraft_repository = FlightRepositoryRedis(config)
 # tracked_aircraft_repository = FlightRepositoryDict()
-aerotow_repository = AerotowRepositoryDict()
+aerotow_repository = AerotowRepositoryRedis(config)
+# aerotow_repository = AerotowRepositoryDict()
 
 connection_pool = pooling.MySQLConnectionPool(pool_name="pynative_pool",
                                               pool_size=5,
@@ -249,6 +251,7 @@ def track_aircraft(beacon, body, check_date=True):
         # log.info('No correction to apply for {} beacon. Alt: {}'.format(beacon['receiver_name'], beacon['altitude']))
         pass
 
+# TODO don't iterate all addresses - yuk. create a function to check for address in repos
     if beacon['address'] in tracked_aircraft_repository.get_all_addresses() and check_date:
         # Remove outdated tracking
         # Todo: consider removal
@@ -258,6 +261,7 @@ def track_aircraft(beacon, body, check_date=True):
         else:
             log.debug('Tracking checked and is up to date')
 
+# TODO don't get all twice - YUK
     if beacon['address'] not in tracked_aircraft_repository.get_all_addresses():
         try:
             db_conn = make_database_connection()
@@ -675,6 +679,7 @@ def process_beacon(ch, method, properties, body):
                         log.error('Config error while tracking: {}'.format(e))
                     except KeyError as e:
                         log.error('Key error while tracking {}'.format(e))
+                        log.error('Key error while tracking {}'.format(traceback.print_exc()))
                 else:
                     log.debug("Not a glider or tug")
         except KeyError as e:
@@ -724,7 +729,7 @@ for db_flight in database_flights:
 
     tracked_aircraft_repository.add_flight(db_tracked_flight['address'], db_tracked_flight)
 
-log.info("Database flights =========")
+log.info("Cached flights =========")
 for aircraft_address in tracked_aircraft_repository.get_all_addresses():
     log.info(pprint.pformat(tracked_aircraft_repository.get_flight(aircraft_address)))
 log.info("=========")

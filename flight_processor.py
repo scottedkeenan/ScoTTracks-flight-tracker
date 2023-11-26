@@ -45,7 +45,6 @@ def new_flight():
         'last_longitude': None,
         'last_altitude': None,
         'last_pings': [],
-        'launch_rec_name': None,
         'aerotow_key': None
     }
 
@@ -176,12 +175,12 @@ def update(flight_data, flight_repository, beacon):
         last_pings = deque(flight_data['last_pings'], maxlen=10)
         last_pings.append(
             {
-                # 'timestamp': beacon['timestamp'],
+                'timestamp': beacon['timestamp'].timestamp(),
                 'altitude': beacon['altitude'],
                 'latitude': beacon['latitude'],
                 'longitude': beacon['longitude'],
                 'receiver': beacon['receiver_name'],
-                # 'signal': beacon['signal_quality']
+                'signal': beacon['signal_quality']
             })
         if len(last_pings) == 10:
             # it's a deque ^
@@ -219,7 +218,6 @@ def reset(flight_data, flight_repository):
     flight_data['last_altitude'] = None
 
     flight_data['last_pings'] = []
-    flight_data['launch_rec_name'] = None
 
     flight_data['aerotow_key'] = None
     flight_data['at_partner_registration'] = None

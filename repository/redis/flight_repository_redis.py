@@ -61,32 +61,31 @@ class FlightRepositoryRedis:
             db=0,
             decode_responses=True)
 
-        self.config = configparser.ConfigParser()
-        config.read('/home/scott/PycharmProjects/flight_tracker/config.ini')
+        self.config = config
 
     def add_flight(self, address, flight_dict):
-        return self.redis_client.set('flight_tracker_' + address, flight_to_string(flight_dict), ex=int(self.config['TRACKER']['redis_expiry']))
+        return self.redis_client.set('flight_tracker_aircraft_' + address, flight_to_string(flight_dict), ex=int(self.config['TRACKER']['redis_expiry']))
 
 
     def get_flight(self, address):
-        return string_to_flight(self.redis_client.get('flight_tracker_' + address))
+        return string_to_flight(self.redis_client.get('flight_tracker_aircraft_' + address))
 
     def get_all_flights(self):
         flights = {}
-        for cached_flight in self.redis_client.scan_iter('flight_tracker_*'):
+        for cached_flight in self.redis_client.scan_iter('flight_tracker_aircraft_*'):
             flight = self.redis_client.get(cached_flight)
             flights[cached_flight[-6:]] = string_to_flight(flight)
         return flights
 
     def get_all_addresses(self):
-        return [x[-6:] for x in self.redis_client.scan_iter('flight_tracker_*')]
+        return [x[-6:] for x in self.redis_client.scan_iter('flight_tracker_aircraft_*')]
 
     def update_flight(self, flight_dict, address=None):
         if not address:
             address = flight_dict['address']
         # log.info('Updating flight {}'.format(address))
-        return self.redis_client.set('flight_tracker_' + address, flight_to_string(flight_dict), ex=int(self.config['TRACKER']['redis_expiry']))
+        return self.redis_client.set('flight_tracker_aircraft_' + address, flight_to_string(flight_dict), ex=int(self.config['TRACKER']['redis_expiry']))
 
     def delete_flight(self, address):
-        return self.redis_client.delete('flight_tracker_' + address)
+        return self.redis_client.delete('flight_tracker_aircraft_' + address)
 
