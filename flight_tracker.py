@@ -251,8 +251,8 @@ def track_aircraft(beacon, body, check_date=True):
         # log.info('No correction to apply for {} beacon. Alt: {}'.format(beacon['receiver_name'], beacon['altitude']))
         pass
 
-# TODO don't iterate all addresses - yuk. create a function to check for address in repos
-    if beacon['address'] in tracked_aircraft_repository.get_all_addresses() and check_date:
+    flight_exists = tracked_aircraft_repository.address_exists(beacon['address'])
+    if flight_exists and check_date:
         # Remove outdated tracking
         # Todo: consider removal
         if datetime.date(tracked_aircraft_repository.get_flight(beacon['address'])['timestamp']) < datetime.utcnow().date():
@@ -261,8 +261,7 @@ def track_aircraft(beacon, body, check_date=True):
         else:
             log.debug('Tracking checked and is up to date')
 
-# TODO don't get all twice - YUK
-    if beacon['address'] not in tracked_aircraft_repository.get_all_addresses():
+    if not flight_exists:
         try:
             db_conn = make_database_connection()
             device = get_device_data_by_address(db_conn.cursor(dictionary=True), beacon['address'])

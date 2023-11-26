@@ -89,3 +89,5 @@ class FlightRepositoryRedis:
     def delete_flight(self, address):
         return self.redis_client.delete('flight_tracker_aircraft_' + address)
 
+    def address_exists(self, address):
+        return True if self.redis_client.exists('flight_tracker_aircraft_' + address) == 1 else False

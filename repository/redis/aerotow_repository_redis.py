@@ -71,3 +71,6 @@ class AerotowRepositoryRedis:
 
     def delete_aerotow(self, key):
         return self.redis_client.delete('flight_tracker_aerotow_' + key)
+
+    def key_exists(self, key):
+        return True if self.redis_client.exists('flight_tracker_aerotow' + key) == 1 else False
