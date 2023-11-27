@@ -98,7 +98,7 @@ class FlightRepositoryRedis:
         # each item or place is formed by the triad longitude, latitude and name.
         if flight_dict['last_longitude'] is not None and flight_dict['last_latitude'] is not None:
             geo_data = [flight_dict['last_longitude'], flight_dict['last_latitude'], address]
-            log.info('Adding this to geoset: {}'.format(geo_data))
+            # log.info('Adding this to geoset: {}'.format(geo_data))
             self.redis_client.geoadd('aircraft', geo_data)
 
     def get_aircraft_in_radius(self, lat, lon, radius=10):
