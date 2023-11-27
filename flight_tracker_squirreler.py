@@ -4,6 +4,9 @@ from datetime import datetime
 
 import json
 
+from _mysql_connector import MySQLInterfaceError
+
+
 def create_daily_flights_table(cursor):
     create_table_sql = """
     DROP TABLE IF EXISTS daily_flights;
@@ -361,13 +364,18 @@ def update_flight(cursor, aircraft_data):
         aircraft_data['average_launch_climb_rate'],
         aircraft_data['max_launch_climb_rate'],
         aircraft_data['launch_complete'],
-        aircraft_data['tug'],
+        aircraft_data['at_partner_registration'],
 
         aircraft_data['address'],
         aircraft_data['takeoff_timestamp']
     )
 
-    cursor.execute(insert_row_sql, update_row_data)
+    try:
+        cursor.execute(insert_row_sql, update_row_data)
+    except MySQLInterfaceError as err:
+        for row in update_row_data:
+            print('{}: {}'.format(type(row), row))
+        raise err
 
 
 def get_todays_flights(cursor):

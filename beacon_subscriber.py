@@ -2,17 +2,16 @@ import configparser
 import json
 import logging
 import os
-import pprint
 
 import pika
 
 from utils import make_database_connection
+from json_utils import json_serial
 
 from ogn.client import AprsClient
 from ogn.parser import parse, ParseError
 
 from flight_tracker_squirreler import get_filters_by_country_codes
-import time
 from datetime import date, datetime
 
 config = configparser.ConfigParser()
@@ -25,14 +24,6 @@ mq_connection = pika.BlockingConnection(pika.ConnectionParameters(config['TRACKE
 mq_channel = mq_connection.channel()
 
 # beacon_count = 0
-
-
-def json_serial(obj):
-    """JSON serializer for objects not serializable by default json code"""
-
-    if isinstance(obj, (datetime, date)):
-        return obj.isoformat()
-    raise TypeError ("Type %s not serializable" % type(obj))
 
 
 def queue_beacon(beacon):
