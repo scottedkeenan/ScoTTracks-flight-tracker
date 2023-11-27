@@ -94,7 +94,6 @@ class FlightRepositoryRedis:
         return True if self.redis_client.exists('flight_tracker_aircraft_' + address) == 1 else False
 
     def add_to_geo(self, address, flight_dict):
-
         # each item or place is formed by the triad longitude, latitude and name.
         if flight_dict['last_longitude'] is not None and flight_dict['last_latitude'] is not None:
             geo_data = [flight_dict['last_longitude'], flight_dict['last_latitude'], address]
@@ -102,29 +101,4 @@ class FlightRepositoryRedis:
             self.redis_client.geoadd('aircraft', geo_data)
 
     def get_aircraft_in_radius(self, lat, lon, radius=10):
-        return self.redis_client.georadius('aircraft', lon, lat, radius, 'km', True, True)
-
-    def get_all_aircraft_positions(self):
-        return self.redis_client.zrange('aircraft', 0, -1)
-
-    def get_all_sets(self):
-        # Pattern to match set keys (you can adjust this based on your key naming conventions)
-        pattern = '*'
-
-        # Initialize the cursor to 0
-        cursor = 0
-
-        # List to store the set keys
-        set_keys = []
-
-        while True:
-            # Scan for keys matching the pattern
-            cursor, keys = self.redis_client.scan(cursor, match=pattern)
-
-            # Filter out only the set keys
-            set_keys.extend([key for key in keys if self.redis_client.type(key) == 'set'])
-
-            # Break the loop if the cursor is 0, indicating the end of the keys
-            if cursor == 0:
-                break
-        return set_keys
+        return [{'geospatial': x, 'aircraft': self.get_flight(x[0])} for x in self.redis_client.georadius('aircraft', lon, lat, radius, 'km', True, True)]
