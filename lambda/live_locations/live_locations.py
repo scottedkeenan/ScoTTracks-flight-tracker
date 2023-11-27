@@ -12,25 +12,25 @@ flight_repo = FlightRepositoryRedis(
 
 
 def lambda_handler(event, context):
-    aircraft = flight_repo.get_all_flights()
+    aircraft = flight_repo.get_aircraft_in_radius(0,0,12742)
     aircraft_feature_collection = []
-    for k, v in aircraft.items():
+    for f in aircraft:
         # Filter unseen
-        if datetime.now() > v['timestamp'] + timedelta(minutes=int(os.environ['unseen_after_time'])):
+        if datetime.now() > f['aircraft']['timestamp'] + timedelta(minutes=int(os.environ['unseen_after_time'])):
             continue
         # Filter None pos
-        if v['last_longitude'] is None or v['last_latitude'] is None:
+        if f['aircraft']['last_longitude'] is None or f['aircraft']['last_latitude'] is None:
             continue
         aircraft_feature_collection.append(
             {
                 'type': 'Feature',
                 'geometry': {
                     'type': 'Point',
-                    'coordinates': [v['last_longitude'], v['last_latitude']]
+                    'coordinates': [f['aircraft']['last_longitude'], f['aircraft']['last_latitude']]
                 },
                 'properties': {
-                    'id': k if v['registration'] == 'UNKNOWN' else v['registration'],
-                    'status': v['status']
+                    'id': f['aircraft']['address'] if f['aircraft']['registration'] == 'UNKNOWN' else f['aircraft']['registration'],
+                    'status': f['aircraft']['status']
                 }
             })
 
