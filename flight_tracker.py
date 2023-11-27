@@ -1,9 +1,9 @@
 import configparser
-import requests
 import json
 import logging
 import os
 import pprint
+import time
 
 import pika
 from pika.exceptions import StreamLostError
@@ -12,10 +12,10 @@ import sys
 
 from mysql.connector import pooling
 
-from ogn.client import AprsClient
-from ogn.parser import parse, ParseError
+from ogn.parser import ParseError
 
-from flight_tracker_squirreler import add_flight, update_flight, get_currently_airborne_flights, add_beacon, get_beacons_for_address_between, get_raw_beacons_between, get_airfields, get_filters_by_country_codes, get_airfields_for_countries, get_raw_beacons_for_address_between
+from flight_tracker_squirreler import add_flight, update_flight, get_currently_airborne_flights, \
+    get_airfields_for_countries, get_device_data_by_address
 
 from datetime import datetime
 
@@ -31,6 +31,7 @@ from charts import json_datetime_converter
 
 from statistics import mean, StatisticsError
 
+from ogn_ddb import import_device_data
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -44,48 +45,6 @@ logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 log = logging.getLogger(__name__)
 
 
-def import_device_data():
-
-    # "4054A1": {
-    #     "DEVICE_TYPE": "I",
-    #     "DEVICE_ID": "4054A1",
-    #     "AIRCRAFT_MODEL": "ASK-21",
-    #     "REGISTRATION": "G-CHPW",
-    #     "CN": "HPW",
-    #     "TRACKED": "Y",
-    #     "IDENTIFIED": "Y"
-    # }
-
-    r = requests.get(config['TRACKER']['device_data_url'])
-
-    if r.status_code != 200:
-        log.error('Unable to update device dict: code {}'.format(r.status_code))
-        try:
-            with open('ogn-ddb.json', 'r') as ddb_data:
-                return json.loads(ddb_data.read())
-        except FileNotFoundError:
-            log.error('No ogn ddb file found')
-            return {}
-
-    device_data = r.text
-
-    keys = []
-    device_dict = {}
-
-    for line in device_data.splitlines():
-        if line[0] == '#':
-            keys = line[1:].split(',')
-        else:
-            values = line.split(',')
-            device = {keys[i].strip("'"): values[i].strip("'") for i,key in enumerate(keys)}
-            device_dict[device['DEVICE_ID']] = device
-
-    with open('ogn-ddb.json', 'w') as ddb_data:
-        ddb_data.write(json.dumps(device_dict))
-
-    return device_dict
-
-
 def import_beacon_correction_data():
     try:
         with open('beacon-correction-data.json', 'r') as beacon_correction_data:
@@ -94,9 +53,6 @@ def import_beacon_correction_data():
         log.error('No ogn beacon correction file found')
         return {}
 
-
-log.info('Importing device data')
-DEVICE_DICT = import_device_data()
 
 log.info('Importing beacon corrections')
 BEACON_CORRECTIONS = import_beacon_correction_data()
@@ -111,7 +67,10 @@ connection_pool = pooling.MySQLConnectionPool(pool_name="pynative_pool",
                                               host=config['TRACKER']['database_host'],
                                               database=config['TRACKER']['database'],
                                               user=config['TRACKER']['database_user'],
-                                              password=config['TRACKER']['database_password'])
+                                              password=config['TRACKER']['database_password'],
+                                              port=config['TRACKER']['database_port'],
+                                              ssl_disabled=True if config['TRACKER']['database_ssl_disabled'] == 'True' else False
+                                              )
 
 
 def make_database_connection():
@@ -119,10 +78,15 @@ def make_database_connection():
     if connection_object.is_connected():
         return connection_object
 
+
 db_conn = make_database_connection()
 
+log.info('Importing device data')
+import_device_data(db_conn, config['TRACKER']['device_data_url'])
+
 AIRFIELD_DATA = {}
-for airfield in get_airfields_for_countries(db_conn.cursor(dictionary=True), config['TRACKER']['track_countries'].split(',')):
+for airfield in get_airfields_for_countries(db_conn.cursor(dictionary=True),
+                                            config['TRACKER']['track_countries'].split(',')):
     airfield_json = {
         'id': airfield['id'],
         'name': airfield['name'],
@@ -144,8 +108,8 @@ db_conn.close()
 
 def detect_airfield(beacon, flight):
     """
-    :param beacon:
-    :param type:
+    :param beacon: The beacon data containing the gps position to make the detection from
+    :param flight: The flight object the beacon relates to
     :return:
     """
     detection_radius = float(config['TRACKER']['airfield_detection_radius'])
@@ -190,10 +154,11 @@ def detect_tug(tracked_aircraft, flight):
                     flight.launch_type = 'aerotow_glider'
                     other_flight.launch_type = 'aerotow_tug'
                 else:
-                    log.info("Aerotow pair found, can't tell which is the tug though: {} is towing with {} at {}".format(
-                        other_flight.address if other_flight.registration == 'UNKNOWN' else other_flight.registration,
-                        flight.address if flight.registration == 'UNKNOWN' else flight.registration,
-                        flight.nearest_airfield['name']))
+                    log.info(
+                        "Aerotow pair found, can't tell which is the tug though: {} is towing with {} at {}".format(
+                            other_flight.address if other_flight.registration == 'UNKNOWN' else other_flight.registration,
+                            flight.address if flight.registration == 'UNKNOWN' else flight.registration,
+                            flight.nearest_airfield['name']))
                     flight.launch_type = 'aerotow_pair'
                     other_flight.launch_type = 'aerotow_pair'
                 aerotow = Aerotow(flight, other_flight)
@@ -203,9 +168,7 @@ def detect_tug(tracked_aircraft, flight):
                 other_flight.aerotow = aerotow
                 return True
 
-
 def save_beacon(body, flight):
-
     # Types:
     # 'all': Save all beacons
     # 'aircraft': Save beacons of selected aircraft (TODO)
@@ -282,25 +245,28 @@ def track_aircraft(beacon, body, check_date=True):
 
     if beacon['address'] not in tracked_aircraft.keys():
         try:
-            device = DEVICE_DICT[beacon['address']]
+            db_conn = make_database_connection()
+            device = get_device_data_by_address(db_conn.cursor(dictionary=True), beacon['address'])
+            db_conn.close()
         except KeyError:
             log.error('Device dict not found for {}'.format(beacon['address']))
             device = None
 
         if device:
-            log.info('Using data in device dict')
+            log.info('Using data in device database')
+            log.info(device)
 
-            if DEVICE_DICT[beacon['address']]['IDENTIFIED'] == 'Y':
-                registration = DEVICE_DICT[beacon['address']]['REGISTRATION'].upper() if DEVICE_DICT[beacon['address']]['REGISTRATION'] else 'UNKNOWN'
+            if device['identified'] == 1:
+                registration = device['registration'].upper() if device['registration'] else 'UNKNOWN'
             else:
-                log.warning('Aircraft {} requests no identify'.format(beacon['address']))
-                if DEVICE_DICT[beacon['address']]['REGISTRATION'] != '':
-                    log.warning("Don't identify but reg included: {}!".format(DEVICE_DICT[beacon['address']]['REGISTRATION']))
+                log.info('Aircraft {} requests no identify'.format(beacon['address']))
+                if device['registration'] != '':
+                    log.info("Don't identify but reg included: {}!".format(device['registration']))
                 registration = 'UNKNOWN'
-            aircraft_model = DEVICE_DICT[beacon['address']]['AIRCRAFT_MODEL'] if DEVICE_DICT[beacon['address']]['AIRCRAFT_MODEL'] else None
-            competition_number = DEVICE_DICT[beacon['address']]['CN'] if DEVICE_DICT[beacon['address']]['CN'] else None
+            aircraft_model = device['aircraft_model'] if device['aircraft_model'] else None
+            competition_number = device['cn'] if device['cn'] else None
 
-            if DEVICE_DICT[beacon['address']]['TRACKED'] != 'Y':
+            if device['tracked'] != 1:
                 log.warning('Aircraft {}/{} requests no track'.format(registration, beacon['address']))
                 no_track_flight = Flight(
                     None,
@@ -324,7 +290,6 @@ def track_aircraft(beacon, body, check_date=True):
             registration = 'UNKNOWN'
             aircraft_model = None
             competition_number = None
-
 
         log.info('Aircraft {}/{} not tracked yet'.format(registration, beacon['address']))
 
@@ -373,14 +338,16 @@ def track_aircraft(beacon, body, check_date=True):
         log.info("Starting to track aircraft {}/{} {}km from {} with status {}".format(registration,
                                                                                        new_flight.address,
                                                                                        new_flight.distance_to_nearest_airfield,
-                                                                                       new_flight.nearest_airfield['name'],
+                                                                                       new_flight.nearest_airfield[
+                                                                                           'name'],
                                                                                        new_flight.status))
         log.info("Extra detail for {}/{}: Model: {}, CN: {}".format(registration,
                                                                     new_flight.address,
                                                                     aircraft_model,
                                                                     competition_number))
 
-        log.info("Ground speed: {} | Alt: {} | time: {}".format(beacon['ground_speed'], beacon['altitude'], beacon['timestamp']))
+        log.info("Ground speed: {} | Alt: {} | time: {}".format(beacon['ground_speed'], beacon['altitude'],
+                                                                beacon['timestamp']))
 
         tracked_aircraft[beacon['address']] = new_flight
         save_beacon(body, new_flight)
@@ -398,7 +365,7 @@ def track_aircraft(beacon, body, check_date=True):
             return
 
         # update fields of flight
-        detect_airfield(beacon, flight) # updates airfield and distance to airfield
+        detect_airfield(beacon, flight)  # updates airfield and distance to airfield
         last_flight_timestamp = flight.timestamp
         flight.update(beacon)
 
@@ -420,9 +387,9 @@ def track_aircraft(beacon, body, check_date=True):
                     add_flight(db_conn.cursor(), flight.to_dict())
                     db_conn.commit()
                     db_conn.close()
-                #2.5 naut. miles
+                # 2.5 nautical miles
                 elif flight.distance_to_nearest_airfield < 4.63:
-                    #todo: give airfields a max launch detection range
+                    # todo: give airfields a max launch detection range
                     # Not near airfield anymore - tracking for launch has been missed
                     log.info("Adding aircraft {} as launched at {} but we missed it".format(
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
@@ -430,7 +397,7 @@ def track_aircraft(beacon, body, check_date=True):
                         flight.timestamp))
                     # todo: use the time known arg below to srt flag in db
                     flight.launch(time_known=False)
-                    #todo: enum/dict the launch types 1: etc.
+                    # todo: enum/dict the launch types 1: etc.
                     flight.launch_type = 'unknown, nearest field'
                     # prevent launch height tracking
                     flight.launch_height = None
@@ -439,9 +406,9 @@ def track_aircraft(beacon, body, check_date=True):
                     add_flight(db_conn.cursor(), flight.to_dict())
                     db_conn.commit()
                     db_conn.close()
-                # 2.5 naut. miles
+                # 2.5 nautical miles
                 elif flight.distance_to_nearest_airfield < 10:
-                    #todo: give airfields a max launch detection range
+                    # todo: give airfields a max launch detection range
                     # Not near airfield at all
                     log.info("Adding aircraft {} as launched near(ish) {} but outside 2.5 nautical mile radius".format(
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
@@ -449,7 +416,7 @@ def track_aircraft(beacon, body, check_date=True):
                         flight.timestamp))
                     flight.launch(time_known=False)
                     # todo: use the time known arg below to srt flag in db
-                    #todo: enum/dict the launch types 1:winch etc.
+                    # todo: enum/dict the launch types 1:winch etc.
                     flight.launch_type = 'unknown, {}km'.format(round(flight.distance_to_nearest_airfield, 2))
                     # prevent launch height tracking
                     flight.takeoff_airfield = 'UNKNOWN'
@@ -467,7 +434,7 @@ def track_aircraft(beacon, body, check_date=True):
             #     flight.distance_to_nearest_airfield, flight.distance_to_nearest_airfield < float(config['TRACKER']['airfield_detection_radius']),
             #     beacon['climb_rate'], beacon['climb_rate'] < float(config['TRACKER']['landing_detection_climb_rate'])))
 
-                # todo remove unused flight object fields eg 'tracking_launch_height'
+            # todo remove unused flight object fields eg 'tracking_launch_height'
 
             if flight.takeoff_timestamp and not flight.launch_complete and last_flight_timestamp <= timestamp:
 
@@ -476,7 +443,7 @@ def track_aircraft(beacon, body, check_date=True):
 
                 # todo config
 
-                launch_tracking_times= {
+                launch_tracking_times = {
                     'winch': 60,
                     'max': 1000
                 }
@@ -493,7 +460,8 @@ def track_aircraft(beacon, body, check_date=True):
                     if not flight.launch_type:
                         # detect tug will update the launch type if a flarm tug is detected
                         if not detect_tug(tracked_aircraft, flight):
-                            log.debug(f"{flight.registration} launch beacon heights {len(flight.launch_beacon_heights)}")
+                            log.debug(
+                                f"{flight.registration} launch beacon heights {len(flight.launch_beacon_heights)}")
                             if len(flight.launch_beacon_heights) >= 5:
                                 log.debug('Deciding launch type for {} at {} @{} based on gradient: {}[{}]'.format(
                                     flight.registration,
@@ -503,14 +471,17 @@ def track_aircraft(beacon, body, check_date=True):
                                     beacon['receiver_name']
                                 ))
                                 if flight.launch_gradient() > float(config['TRACKER']['winch_detection_gradient']):
-                                    log.info('{} detected winch launching at {}'.format(flight.registration, flight.nearest_airfield['name']))
+                                    log.info('{} detected winch launching at {}'.format(flight.registration,
+                                                                                        flight.nearest_airfield[
+                                                                                            'name']))
                                     flight.set_launch_type('winch')
                                 elif len(flight.launch_beacon_heights) >= 10:
                                     try:
                                         flight.average_launch_climb_rate = mean(flight.launch_climb_rates.values())
                                     except StatisticsError:
                                         log.info("No data to average, skipping")
-                                log.info('{} detected aerotow (unknown tug) or self launching at {}'.format(flight.registration, flight.nearest_airfield['name']))
+                                log.info('{} detected aerotow (unknown tug) or self launching at {}'.format(
+                                    flight.registration, flight.nearest_airfield['name']))
                                 flight.set_launch_type('aerotow_sl')
                 elif not flight.launch_complete:
                     flight.launch_complete = True
@@ -549,11 +520,11 @@ def track_aircraft(beacon, body, check_date=True):
                     try:
                         flight.update_aerotow(beacon)
                     except AttributeError as err:
-                            log.error(err)
-                            log.error(
-                                'Something went wrong with aerotow update for {}/{}, aborting'.format(flight.registration,
-                                                                                               flight.address))
-                            flight.aerotow.abort()
+                        log.error(err)
+                        log.error(
+                            'Something went wrong with aerotow update for {}/{}, aborting'.format(flight.registration,
+                                                                                                  flight.address))
+                        flight.aerotow.abort()
 
                 if flight.launch_type in ['aerotow_sl', 'tug']:
                     try:
@@ -588,10 +559,10 @@ def track_aircraft(beacon, body, check_date=True):
                     except StatisticsError:
                         log.info("No data to average, skipping")
 
-            elif flight.status == 'air'\
-                    and beacon['ground_speed'] < float(config['TRACKER']['landing_detection_speed'])\
-                    and flight.agl() < float(config['TRACKER']['landing_detection_agl'])\
-                    and flight.distance_to_nearest_airfield < float(config['TRACKER']['airfield_detection_radius'])\
+            elif flight.status == 'air' \
+                    and beacon['ground_speed'] < float(config['TRACKER']['landing_detection_speed']) \
+                    and flight.agl() < float(config['TRACKER']['landing_detection_agl']) \
+                    and flight.distance_to_nearest_airfield < float(config['TRACKER']['airfield_detection_radius']) \
                     and beacon['climb_rate'] < float(config['TRACKER']['landing_detection_climb_rate']):
 
                 log.info("Aircraft {} detected below airborne detection criteria".format(
@@ -613,7 +584,9 @@ def track_aircraft(beacon, body, check_date=True):
                         flight.landing_timestamp,
                         beacon['reference_timestamp']))
 
-                    log.info('Landing data... ground_speed: {}, agl: {}, climb_rate: {}'.format(beacon['ground_speed'], flight.agl(), beacon['climb_rate']))
+                    log.info('Landing data... ground_speed: {}, agl: {}, climb_rate: {}'.format(beacon['ground_speed'],
+                                                                                                flight.agl(),
+                                                                                                beacon['climb_rate']))
                     db_conn = make_database_connection()
                     if flight.takeoff_timestamp:
                         update_flight(db_conn.cursor(), flight.to_dict())
@@ -625,6 +598,7 @@ def track_aircraft(beacon, body, check_date=True):
                         flight.address if flight.registration == 'UNKNOWN' else flight.registration,
                         flight.takeoff_timestamp,
                         flight.landing_timestamp))
+                    log.debug('ALT GRAPH? ' + config['TRACKER']['draw_alt_graph'])
                     if config['TRACKER']['draw_alt_graph'] == 'true' and flight.takeoff_timestamp and flight.landing_timestamp:
                         chart_payload = {
                             'takeoff_timestamp': flight.takeoff_timestamp,
@@ -645,21 +619,12 @@ def track_aircraft(beacon, body, check_date=True):
                     tracked_aircraft[flight.address].reset()
                     db_conn.close()
 
-    # log.info('Tracked aircraft =========================')
-    # for flight in tracked_aircraft:
-    #     log.info(pprint.pformat(tracked_aircraft[flight].to_dict()))
-    # log.info('End Tracked aircraft {} {}'.format(len(tracked_aircraft), '======================'))
-
-import time
 
 beacon_count = 0
 check_date = True if config['TRACKER']['check_date'] == 'True' else False
 
 
 def process_beacon(ch, method, properties, body):
-    # log.info('Beacon process start')
-    # global  beacon_count
-    # start = time.time()
     try:
         beacon = json.loads(body)
         try:
@@ -681,10 +646,7 @@ def process_beacon(ch, method, properties, body):
             log.debug('Beacon type field not found: {}'.format(e))
     except ParseError as e:
         log.error('Parse error: {}'.format(e))
-    end = time.time()
-    # beacon_count += 1
-    # log.info('Beacon took {} to process'.format(end - start))
-    # log.info('Beacon count: {}'.format(beacon_count))
+
 
 db_conn = make_database_connection()
 
@@ -729,7 +691,7 @@ log.info("=========")
 
 
 def connect_to_queue():
-    connection = pika.BlockingConnection(pika.ConnectionParameters(config['TRACKER']['rabbit_mq_host'],heartbeat=0))
+    connection = pika.BlockingConnection(pika.ConnectionParameters(config['TRACKER']['rabbit_mq_host'], heartbeat=0))
     channel = connection.channel()
 
     channel.basic_consume(queue='received_beacons',
@@ -745,6 +707,7 @@ def main():
             connect_to_queue()
         except pika.exceptions.StreamLostError:
             log.error('Queue connection lost, retrying')
+
 
 if __name__ == '__main__':
     try:

@@ -76,7 +76,7 @@ def generate_map_with_route(location_list, color='red'):
 
     folium.TileLayer(
         tiles='https://api.tiles.openaip.net/api/data/openaip/{z}/{x}/{y}.png' + '?apiKey={}'.format(AIP_API_KEY),
-        attr='Airspace: <a href="https://www.openaip.net">Open AIP<a>'
+        attr='Flight Data: <a href="https://www.glidernet.org/" target="_blank">OGN<a> Airspace: <a href="https://www.openaip.net" target="_blank">Open AIP<a>'
     ).add_to(map)
 
     return map
@@ -89,17 +89,17 @@ def lambda_handler(event, context):
     bucket_name = event['Records'][0]['s3']['bucket']['name']
     print(s3_key)
     s3_client = boto3.client('s3')
-    
+
     import tempfile
     tempdir = tempfile.gettempdir()
     print(tempdir)
-    
+
     with open('{}/{}'.format(tempdir, s3_key), 'wb') as f:
         s3_client.download_fileobj(bucket_name, s3_key, f)
-    
+
     with open('/tmp/{}'.format(s3_key), 'r') as f:
         event = json.loads(f.read())
- 
+
         if event['data']:
             times = []
             y1 = []
@@ -174,5 +174,3 @@ def lambda_handler(event, context):
             'statusCode': 200,
             'body': json.dumps('No data found')
         }
-
-        
