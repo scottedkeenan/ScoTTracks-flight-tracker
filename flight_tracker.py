@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import pprint
+import traceback
 
 import pika
 from pika.exceptions import StreamLostError
@@ -65,7 +66,8 @@ log.info(pprint.pformat(BEACON_CORRECTIONS))
 
 tracked_aircraft_repository = FlightRepositoryRedis(config)
 # tracked_aircraft_repository = FlightRepositoryDict()
-aerotow_repository = AerotowRepositoryDict()
+aerotow_repository = AerotowRepositoryRedis(config)
+# aerotow_repository = AerotowRepositoryDict()
 
 connection_pool = pooling.MySQLConnectionPool(pool_name="pynative_pool",
                                               pool_size=5,
@@ -88,7 +90,7 @@ def make_database_connection():
 db_conn = make_database_connection()
 
 log.info('Importing device data')
-import_device_data(db_conn, config['TRACKER']['device_data_url'])
+# import_device_data(db_conn, config['TRACKER']['device_data_url'])
 
 AIRFIELD_DATA = {}
 for airfield in get_airfields_for_countries(db_conn.cursor(dictionary=True),
@@ -249,7 +251,8 @@ def track_aircraft(beacon, body, check_date=True):
         # log.info('No correction to apply for {} beacon. Alt: {}'.format(beacon['receiver_name'], beacon['altitude']))
         pass
 
-    if beacon['address'] in tracked_aircraft_repository.get_all_addresses() and check_date:
+    flight_exists = tracked_aircraft_repository.address_exists(beacon['address'])
+    if flight_exists and check_date:
         # Remove outdated tracking
         # Todo: consider removal
         if datetime.date(tracked_aircraft_repository.get_flight(beacon['address'])['timestamp']) < datetime.utcnow().date():
@@ -258,7 +261,7 @@ def track_aircraft(beacon, body, check_date=True):
         else:
             log.debug('Tracking checked and is up to date')
 
-    if beacon['address'] not in tracked_aircraft_repository.get_all_addresses():
+    if not flight_exists:
         try:
             db_conn = make_database_connection()
             device = get_device_data_by_address(db_conn.cursor(dictionary=True), beacon['address'])
@@ -663,20 +666,17 @@ def process_beacon(ch, method, properties, body):
     try:
         beacon = json.loads(body)
         try:
-            if beacon['beacon_type'] in ['aprs_aircraft', 'flarm']:
-                log.debug('Aircraft beacon received')
-                if beacon['aircraft_type'] in [1, 2]:
-                    try:
-                        track_aircraft(beacon, body, check_date)
-                    except TypeError as e:
-                        log.error('Type error while tracking: {}'.format(e))
-                        raise
-                    except configparser.NoOptionError as e:
-                        log.error('Config error while tracking: {}'.format(e))
-                    except KeyError as e:
-                        log.error('Key error while tracking {}'.format(e))
-                else:
-                    log.debug("Not a glider or tug")
+            log.debug('Aircraft beacon received')
+            try:
+                track_aircraft(beacon, body, check_date)
+            except TypeError as e:
+                log.error('Type error while tracking: {}'.format(e))
+                raise
+            except configparser.NoOptionError as e:
+                log.error('Config error while tracking: {}'.format(e))
+            except KeyError as e:
+                log.error('Key error while tracking {}'.format(e))
+                log.error('Key error while tracking {}'.format(traceback.print_exc()))
         except KeyError as e:
             log.debug('Beacon type field not found: {}'.format(e))
     except ParseError as e:
@@ -724,7 +724,7 @@ for db_flight in database_flights:
 
     tracked_aircraft_repository.add_flight(db_tracked_flight['address'], db_tracked_flight)
 
-log.info("Database flights =========")
+log.info("Cached flights =========")
 for aircraft_address in tracked_aircraft_repository.get_all_addresses():
     log.info(pprint.pformat(tracked_aircraft_repository.get_flight(aircraft_address)))
 log.info("=========")

@@ -22,3 +22,6 @@ class FlightRepositoryDict:
 
     def delete_flight(self, address):
         self.flight_dict.pop(address)
+
+    def address_exists(self, address):
+        return True if 'flight_tracker_aircraft' + address in self.flight_dict.keys() else False

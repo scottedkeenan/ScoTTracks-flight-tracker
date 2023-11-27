@@ -1,5 +1,5 @@
 def build_aerotow_key(aerotow):
-    flight_addresses = sorted(aerotow['flights'].keys())
+    flight_addresses = sorted(aerotow['flights'])
     return '_'.join(flight_addresses)
 
 
@@ -29,3 +29,6 @@ class AerotowRepositoryDict:
 
     def delete_aerotow(self, key):
         self.aerotow_dict.pop(key)
+
+    def key_exists(self, key):
+        return True if 'flight_tracker_aerotow' + key in self.aerotow_dict.keys() else False

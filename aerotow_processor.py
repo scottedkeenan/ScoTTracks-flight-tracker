@@ -1,4 +1,3 @@
-import datetime
 import pprint
 from geopy import distance as measure_distance
 import os
@@ -13,23 +12,24 @@ log = logging.getLogger(__name__)
 def new_aerotow(flight1, flight2):
     aerotow_data = {
         'aerotow_key': None,
-        'flights': {
-            flight1['address']: flight1,
-            flight2['address']: flight2
-        },
+        'flights': [
+            flight1['address'],
+            flight2['address']
+        ],
         'check_failures': 0,
         'beacons': {},
-        'start_beacons': {flight1['takeoff_timestamp']: flight1,
-                          flight2['takeoff_timestamp']: flight2},
         'flight_beacon_counts': {},
-
+        'launch_rec_name': None
     }
 
-    if len(aerotow_data['start_beacons']) == 2:
-        earliest_time = min(list(aerotow_data['start_beacons'].keys()))
-        latest_time = max(list(aerotow_data['start_beacons'].keys()))
-        earliest_flight = aerotow_data['start_beacons'][earliest_time]
-        latest_flight = aerotow_data['start_beacons'][latest_time]
+    start_beacons = {int(flight1['takeoff_timestamp'].timestamp()): flight1,
+                     int(flight2['takeoff_timestamp'].timestamp()): flight2}
+
+    if len(start_beacons) == 2:
+        earliest_time = min(list(start_beacons.keys()))
+        latest_time = max(list(start_beacons.keys()))
+        earliest_flight = start_beacons[earliest_time]
+        latest_flight = start_beacons[latest_time]
 
         aerotow_data['beacons'][earliest_time] = {
             earliest_flight['address']: {
@@ -49,7 +49,7 @@ def new_aerotow(flight1, flight2):
             }
         }
     else:
-        earliest_time = min(list(aerotow_data['start_beacons'].keys()))
+        earliest_time = min(list(start_beacons.keys()))
 
         aerotow_data['beacons'][earliest_time] = {
             flight1['address']: {
@@ -74,10 +74,9 @@ def new_aerotow(flight1, flight2):
 
 
 def count_forwards(aerotow_data, target_timestamp):
-    d = datetime.timedelta(seconds=1)
     new_timestamp = list(aerotow_data['beacons'].keys())[-1]
     while new_timestamp <= target_timestamp:
-        new_timestamp = new_timestamp + d
+        new_timestamp +=1
         aerotow_data['beacons'][new_timestamp] = {}
 
 
@@ -95,28 +94,28 @@ def abort(beacon_flight, aerotow_data, aerotow_repository, flight_repository):
 
 def insert_aerotow_data(aerotow_data, flight_data, beacon, aerotow_repository, flight_repository):
     # when an aircraft with an aerotow launch type gets a timestamp the dict is updated
-
-    if flight_data['launch_rec_name'] and flight_data['launch_rec_name'] != beacon['receiver_name']:
+    beacon_timestamp = int(beacon['timestamp'].timestamp())
+    if aerotow_data['launch_rec_name'] and aerotow_data['launch_rec_name'] != beacon['receiver_name']:
         # exit early if there is a common rec name and this isn't from it
         log.debug("Skipping aerotow tracking: this beacon isn't from the common receiver")
         return
-    if beacon['timestamp'] < list(aerotow_data['beacons'].keys())[0]:
+    if beacon_timestamp < list(aerotow_data['beacons'].keys())[0]:
         # exit early if this is from the past
         log.info("Skipping aerotow tracking: this beacon is from before the launch was detected")
         return
 
-    if beacon['timestamp'] not in aerotow_data['beacons'].keys():
+    if beacon_timestamp not in aerotow_data['beacons'].keys():
         # missing timestamps between the new one and the last in the dict are added
-        count_forwards(aerotow_data, beacon['timestamp'])
+        count_forwards(aerotow_data, beacon_timestamp)
     try:
         # if the correct timestamp exists, just slot the data in
-        aerotow_data['beacons'][beacon['timestamp']][flight_data['address']] = {
+        aerotow_data['beacons'][beacon_timestamp][flight_data['address']] = {
             'altitude': beacon['altitude'],
             'latitude': beacon['latitude'],
             'longitude': beacon['longitude']
         }
     except KeyError:
-        log.info('Timestamp {} missing from aerotow beacon keys'.format(beacon['timestamp']))
+        log.info('Timestamp {} missing from aerotow beacon keys'.format(beacon_timestamp))
         pass
 
     aerotow_data['flight_beacon_counts'][flight_data['address']] += 1
@@ -129,41 +128,43 @@ def check_complete(aerotow_data, beacon, beacon_flight, aerotow_repository, flig
     # every 10 seconds check the average vertical/horizontal separation for the last 10 seconds
     # if they are outside parameters, mark the involved aircraft as launched, update the launch heights
 
-    # Not necessarily the tug but the aerotow partner
-    tug_flight = flight_repository.get_flight(beacon_flight['tug'])
+    beacon_timestamp = int(beacon['timestamp'].timestamp())
 
-    time_since_last_check = (beacon['timestamp'] - aerotow_data['check_counter_datetime']).total_seconds()
+    time_since_last_check = beacon_timestamp - aerotow_data['check_counter_datetime']
     log.debug('Seconds since check time: {}'.format(time_since_last_check))
     if time_since_last_check >= 10 and aerotow_data['check_failures'] < 5:
-        log.info(pprint.pformat(aerotow_data['flight_beacon_counts']))
+        log.info('Beacon counts for {}:{}'.format(aerotow_data['aerotow_key'], pprint.pformat(aerotow_data['flight_beacon_counts'])))
+        # Not necessarily the tug but the aerotow partner
+        tug_flight = flight_repository.get_flight(beacon_flight['tug'])
         if list(aerotow_data['flight_beacon_counts'].values())[0] > 10 and \
                 list(aerotow_data['flight_beacon_counts'].values())[0] > 10:
             # set the pair to use only the most commonly seen beacon
-            flight_addresses = list(aerotow_data['flights'].keys())
-            if not beacon_flight['launch_rec_name']:
+            if not aerotow_data['launch_rec_name']:
+                log.warning(pprint.pformat(beacon_flight))
                 data = Counter([i['receiver'] for i in beacon_flight['last_pings']] + [i['receiver'] for i in tug_flight['last_pings']])
+                log.warning(pprint.pformat(data))
                 common_rec_name = (data.most_common(1)[0][0])
-                log.info('Common receiver name for the aerotow pair is {}'.format(common_rec_name))
+                log.info('Common receiver name for the aerotow pair {} is {}'.format(beacon_flight['aerotow_key'], common_rec_name))
 
-                beacon_flight['launch_rec_name'] = common_rec_name
-                tug_flight['launch_rec_name'] = common_rec_name
-
-            last_pings = list(aerotow_data['beacons'].items())[-10:]
+                aerotow_data['launch_rec_name'] = common_rec_name
+                aerotow_repository.update_aerotow(aerotow_data)
+            # TODO: simplify this grouping of data
+            last_positions = list(aerotow_data['beacons'].items())[-10:]
 
             grouped_metrics = {}
 
-            for _, flights in last_pings:
-                for flight in flights:
-                    if flight not in grouped_metrics.keys():
-                        grouped_metrics[flight] = {
-                            'altitude': [flights[flight]['altitude']],
-                            'latitude': [flights[flight]['latitude']],
-                            'longitude': [flights[flight]['longitude']]
+            for position_timestamp, position_data in last_positions:
+                for aircraft_address in position_data:
+                    if aircraft_address not in grouped_metrics.keys():
+                        grouped_metrics[aircraft_address] = {
+                            'altitude': [position_data[aircraft_address]['altitude']],
+                            'latitude': [position_data[aircraft_address]['latitude']],
+                            'longitude': [position_data[aircraft_address]['longitude']]
                         }
                     else:
-                        grouped_metrics[flight]['altitude'].append(flights[flight]['altitude'])
-                        grouped_metrics[flight]['latitude'].append(flights[flight]['latitude'])
-                        grouped_metrics[flight]['longitude'].append(flights[flight]['longitude'])
+                        grouped_metrics[aircraft_address]['altitude'].append(position_data[aircraft_address]['altitude'])
+                        grouped_metrics[aircraft_address]['latitude'].append(position_data[aircraft_address]['latitude'])
+                        grouped_metrics[aircraft_address]['longitude'].append(position_data[aircraft_address]['longitude'])
 
             log.debug('[A/T] Grouped metrics: {}'.format(pprint.pformat(grouped_metrics)))
 
@@ -175,7 +176,7 @@ def check_complete(aerotow_data, beacon, beacon_flight, aerotow_repository, flig
                     'longitude': mean(data['longitude'])
                 }
 
-            log.debug('[A/T] Averages: {}'.format(pprint.pformat(averages)))
+            log.info('[A/T] Averages: {}'.format(pprint.pformat(averages)))
 
             average_addresses = list(averages.keys())
             log.info('average addresses: {}'.format(pprint.pformat(average_addresses)))
@@ -188,7 +189,7 @@ def check_complete(aerotow_data, beacon, beacon_flight, aerotow_repository, flig
                     log.info('Aborted aerotow tracking for {} ({}), too many failures'.format(beacon_flight['address'], aerotow_data['aerotow_key']))
                     return
                 logging.info('Lost track of an aerotow aircraft, waiting another 10 seconds')
-                aerotow_data['check_counter_datetime'] = beacon['timestamp']
+                aerotow_data['check_counter_datetime'] = beacon_timestamp
                 log.info('Check counter datetime now {}'.format(aerotow_data['check_counter_datetime']))
                 aerotow_repository.update_aerotow(aerotow_data)
                 return
@@ -239,7 +240,7 @@ def check_complete(aerotow_data, beacon, beacon_flight, aerotow_repository, flig
                 flight_repository.update_flight(tug_flight)
                 aerotow_repository.update_aerotow(aerotow_data)
                 return
-            aerotow_data['check_counter_datetime'] = beacon['timestamp']
+            aerotow_data['check_counter_datetime'] = beacon_timestamp
             log.debug('Check counter datetime now {}'.format(aerotow_data['check_counter_datetime']))
 
 # work out which is in front (tug)

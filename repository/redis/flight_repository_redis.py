@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import pprint
+import configparser
 
 import redis
 
@@ -60,36 +61,44 @@ class FlightRepositoryRedis:
             db=0,
             decode_responses=True)
 
+        self.config = config
+
     def add_flight(self, address, flight_dict):
-        try:
-            return self.redis_client.set('flight_tracker_' + address, flight_to_string(flight_dict))
-        except TypeError:
-            print(flight_dict)
-            raise TypeError
+        self.add_to_geo(address, flight_dict)
+        return self.redis_client.set('flight_tracker_aircraft_' + address, flight_to_string(flight_dict), ex=int(self.config['TRACKER']['redis_expiry']))
+
 
     def get_flight(self, address):
-        return string_to_flight(self.redis_client.get('flight_tracker_' + address))
+        return string_to_flight(self.redis_client.get('flight_tracker_aircraft_' + address))
 
     def get_all_flights(self):
         flights = {}
-        for cached_flight in self.redis_client.scan_iter('flight_tracker_*'):
+        for cached_flight in self.redis_client.scan_iter('flight_tracker_aircraft_*'):
             flight = self.redis_client.get(cached_flight)
             flights[cached_flight[-6:]] = string_to_flight(flight)
         return flights
 
     def get_all_addresses(self):
-        return [x[-6:] for x in self.redis_client.scan_iter('flight_tracker_*')]
+        return [x[-6:] for x in self.redis_client.scan_iter('flight_tracker_aircraft_*')]
 
     def update_flight(self, flight_dict, address=None):
-
-        if address:
-            # log.info('Updating flight {}'.format(address))
-            return self.redis_client.set('flight_tracker_' + address, flight_to_string(flight_dict))
-        else:
-            # log.info('Updating flight {}'.format(flight_dict['address']))
-            return self.redis_client.set('flight_tracker_' + flight_dict['address'], flight_to_string(flight_dict))
-
+        if not address:
+            address = flight_dict['address']
+        self.add_to_geo(address, flight_dict)
+        return self.redis_client.set('flight_tracker_aircraft_' + address, flight_to_string(flight_dict), ex=int(self.config['TRACKER']['redis_expiry']))
 
     def delete_flight(self, address):
-        return self.redis_client.delete('flight_tracker_' + address)
+        return self.redis_client.delete('flight_tracker_aircraft_' + address)
 
+    def address_exists(self, address):
+        return True if self.redis_client.exists('flight_tracker_aircraft_' + address) == 1 else False
+
+    def add_to_geo(self, address, flight_dict):
+        # each item or place is formed by the triad longitude, latitude and name.
+        if flight_dict['last_longitude'] is not None and flight_dict['last_latitude'] is not None:
+            geo_data = [flight_dict['last_longitude'], flight_dict['last_latitude'], address]
+            # log.info('Adding this to geoset: {}'.format(geo_data))
+            self.redis_client.geoadd('aircraft', geo_data)
+
+    def get_aircraft_in_radius(self, lat, lon, radius=10):
+        return [{'geospatial': x, 'aircraft': self.get_flight(x[0])} for x in self.redis_client.georadius('aircraft', lon, lat, radius, 'km', True, True)]
