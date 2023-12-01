@@ -147,8 +147,8 @@ def detect_tug(tracked_aircraft, flight):
     if flight['aircraft_type'] == 2:
         log.info('This IS a tug!')
         return False
-    for other_flight in tracked_aircraft.get_all_flights().items():
-        if other_flight['address'] == flight['address']:
+    for other_flight_address, other_flight in tracked_aircraft.get_all_flights().items():
+        if other_flight_address == flight['address']:
             continue
         if other_flight['takeoff_timestamp'] and other_flight['takeoff_airfield'] == flight['takeoff_airfield']:
             time_difference = (other_flight['takeoff_timestamp'] - flight['takeoff_timestamp']).total_seconds()
