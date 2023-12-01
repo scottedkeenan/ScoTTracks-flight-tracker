@@ -172,15 +172,14 @@ def update(flight_data, flight_repository, beacon):
             not flight_data['launch_complete'] and \
             flight_data['launch_type'] not in ['aerotow_pair', 'aerotow_glider']:
         # todo: consider if last pings should be in aerotow object
+        # todo: consider if using other beacon attributes may be suitable for selecting a common reciever
         last_pings = deque(flight_data['last_pings'], maxlen=10)
         last_pings.append(
             {
-                'timestamp': beacon['timestamp'].timestamp(),
                 'altitude': beacon['altitude'],
                 'latitude': beacon['latitude'],
                 'longitude': beacon['longitude'],
-                'receiver': beacon['receiver_name'],
-                # 'signal': beacon['signal_quality']
+                'receiver': beacon['receiver_name']
             })
         if len(last_pings) == 10:
             # it's a deque ^
