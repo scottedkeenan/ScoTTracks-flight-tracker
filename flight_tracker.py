@@ -441,7 +441,7 @@ def track_aircraft(beacon, body, check_date=True):
                     flight['launch_type'] = 'unknown, {}km'.format(round(flight['distance_to_nearest_airfield'], 2))
 
                     # prevent launch height tracking
-                    flight['takeoff_airfield'] = 'UNKNOWN'
+                    flight['takeoff_airfield'] = None
                     flight['launch_height'] = None
                     flight['launch_complete'] = True
 
